@@ -564,13 +564,13 @@ function renderImportExport() {
       <div id="csvImportResult" style="margin-top:10px;font-size:0.82rem;"></div>
     </div>
 
-    <div class="section-title">保存（エクスポート）</div>
-    <div class="card">
+    <div class="section-title" style="${dirty ? 'background:var(--danger);color:#fff;display:inline-block;padding:4px 12px;border-radius:6px;' : ''}">保存（エクスポート）</div>
+    <div class="card" style="${dirty ? 'border:2px solid var(--danger);box-shadow:0 0 0 1px var(--danger);' : ''}">
       <p style="color:var(--text2);font-size:0.85rem;margin-bottom:4px;">
         作業を終えるときは、必ずここでJSONを保存してください。次回はこのファイルから再開します。
       </p>
-      ${dirty ? `<p style="color:var(--warn);font-size:0.82rem;margin-bottom:12px;">⚠ 前回のエクスポート以降、未保存の変更があります</p>` : `<p style="color:var(--ok);font-size:0.82rem;margin-bottom:12px;">✓ 現在の内容はすべて保存済みです</p>`}
-      <button class="btn primary" id="btnExportMaster">JSONで保存する（正本データ）</button>
+      ${dirty ? `<p style="color:var(--danger);font-size:0.9rem;font-weight:bold;margin-bottom:12px;">⚠ 前回のエクスポート以降、未保存の変更があります</p>` : `<p style="color:var(--ok);font-size:0.82rem;margin-bottom:12px;">✓ 現在の内容はすべて保存済みです</p>`}
+      <button class="btn primary" id="btnExportMaster" style="${dirty ? 'background:var(--danger);border-color:var(--danger);color:#ffe14d;' : ''}">JSONで保存する（正本データ）</button>
     </div>
 
     <div class="section-title">その他</div>
