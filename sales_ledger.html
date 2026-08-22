@@ -789,6 +789,9 @@ function renderWorkMaster() {
     relinkUnmatchedSales();
     renderWorkMaster();
     updateUnlinkedBadge();
+    // 連続で登録しやすいよう、再描画後のタイトル入力欄にフォーカスを戻す
+    const titleInput = document.getElementById('newWorkTitle');
+    if (titleInput) titleInput.focus();
   };
 
   el.querySelectorAll('[data-del-brand]').forEach(b => b.onclick = () => {
