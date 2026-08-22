@@ -389,6 +389,7 @@ function importNoteCSV(text) {
 
   const existingTxIds = new Set(ledgerData.sales.map(s => s.txId));
   let added = 0, skipped = 0;
+  let autoRegisteredCustomers = 0;
   const unmatchedContentNames = new Set();
 
   for (let i = 1; i < rows.length; i++) {
@@ -402,10 +403,25 @@ function importNoteCSV(text) {
     const matchedWork = findWorkByTitleOrAlias(contentName);
     if (!matchedWork) unmatchedContentNames.add(contentName);
 
+    // 購入者名が「ゲスト」以外（＝noteアカウント名が判明している）場合、
+    // 個人を特定できているので、既存顧客と一致すれば紐づけ、なければ自動で顧客登録する。
+    // 「ゲスト」は個人特定不能なため対象外（「未紐づけ」タブでの手動調査に委ねる）。
+    const buyerName = (r[NOTE_CSV_COLS.buyerName] || '').trim();
+    let matchedCustomerId = null;
+    if (buyerName && buyerName !== 'ゲスト') {
+      let customer = ledgerData.customers.find(c => c.displayName === buyerName);
+      if (!customer) {
+        customer = { id: genId('cust'), displayName: buyerName, memo: '', createdAt: new Date().toISOString() };
+        ledgerData.customers.push(customer);
+        autoRegisteredCustomers++;
+      }
+      matchedCustomerId = customer.id;
+    }
+
     ledgerData.sales.push({
       txId,
       datetime: (r[NOTE_CSV_COLS.datetime] || '').trim(),
-      buyerNameRaw: (r[NOTE_CSV_COLS.buyerName] || '').trim(),
+      buyerNameRaw: buyerName,
       workId: matchedWork ? matchedWork.id : null,
       contentNameRaw: contentName,
       issuerRaw: issuer,
@@ -413,7 +429,7 @@ function importNoteCSV(text) {
       amountExTax: Number(r[NOTE_CSV_COLS.amountExTax] || 0),
       tax: Number(r[NOTE_CSV_COLS.tax] || 0),
       paymentMethod: (r[NOTE_CSV_COLS.paymentMethod] || '').trim(),
-      customerId: null,
+      customerId: matchedCustomerId,
       guestChecked: false // true = 「このゲストは調べなくてOK（追跡不能・特定不要）」とマーク済み
     });
     existingTxIds.add(txId);
@@ -422,7 +438,7 @@ function importNoteCSV(text) {
 
   ledgerData.meta.lastImportAt = new Date().toISOString();
   markDirty();
-  return { added, skipped, unmatchedContentNames: Array.from(unmatchedContentNames) };
+  return { added, skipped, unmatchedContentNames: Array.from(unmatchedContentNames), autoRegisteredCustomers };
 }
 
 /* =========================================================
@@ -601,6 +617,9 @@ function renderImportExport() {
         resultEl.innerHTML = `<span style="color:var(--danger);">${result.error}</span>`;
       } else {
         let msg = `<span style="color:var(--ok);">新規 ${result.added}件を追加しました（重複スキップ ${result.skipped}件）。</span>`;
+        if (result.autoRegisteredCustomers > 0) {
+          msg += `<br><span style="color:var(--ok);">新規購入者 ${result.autoRegisteredCustomers}名を顧客として自動登録しました。</span>`;
+        }
         if (result.unmatchedContentNames && result.unmatchedContentNames.length > 0) {
           msg += `<br><span style="color:var(--warn);">作品未紐づけが ${result.unmatchedContentNames.length}件あります。「未紐づけ」タブで対応してください。</span>`;
         }
@@ -695,9 +714,9 @@ function renderWorkMaster() {
         <div class="card">
           <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">新規作品登録</div>
           ${unregisteredTitles.length > 0 ? `<div style="color:var(--text3);font-size:0.75rem;margin-bottom:8px;">💡 CSVに含まれる未登録タイトルが${unregisteredTitles.length}件あります。下の欄に入力すると候補が出ます。</div>` : ''}
-          <input type="text" id="newWorkId" placeholder="作品ID（英数字・ハイフン・アンダーバーのみ。例：FK-001）" style="${inputStyle}">
-          <input type="text" id="newWorkTitle" list="titleCandidates" placeholder="作品タイトル（noteの掲載名と一致させてください）" style="${inputStyle}margin-top:8px;" autocomplete="off">
+          <input type="text" id="newWorkTitle" list="titleCandidates" placeholder="作品タイトル（noteの掲載名と一致させてください）" style="${inputStyle}" autocomplete="off">
           <datalist id="titleCandidates">${titleCandidatesHtml}</datalist>
+          <input type="text" id="newWorkId" placeholder="作品ID（英数字・ハイフン・アンダーバーのみ。例：FK-001）" style="${inputStyle}margin-top:8px;">
           <select id="newWorkBrand" style="${inputStyle}margin-top:8px;">
             <option value="">ブランドを選択</option>
             ${brandOptions}
