@@ -707,10 +707,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
     width:50vw;
     border-left:1px solid var(--border);
   }
-  /* リールを画面左寄せに（元は左右中央寄せだった） */
+  /* リールを画面左寄せに（元は左右中央寄せだった）。カード幅の1/3程度、左端から右にインデント */
   .reel-card {
     margin-left:0;
     margin-right:auto;
+    left:161px; /* 16px(元の左マージン) + 145px(440pxの約1/3) */
   }
 }
 .modal-header {
