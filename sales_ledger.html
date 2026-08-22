@@ -273,6 +273,10 @@ function emptyData() {
 
 let ledgerData = loadData();
 
+// 一覧の並び順設定（表示上の好みなので、正本データ(ledgerData)には含めずページ内だけで保持する）
+let customerSortOrder = 'amount_desc'; // 'amount_desc' | 'amount_asc' | 'name'
+let workSortOrder = 'id'; // 'id' | 'title'
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -661,7 +665,11 @@ function renderWorkMaster() {
   if (ledgerData.works.length === 0) {
     worksHtml = `<div class="empty-state">まだ作品が登録されていません。</div>`;
   } else {
-    worksHtml = ledgerData.works.map(w => {
+    const sortedWorks = [...ledgerData.works].sort((a, b) => {
+      if (workSortOrder === 'title') return a.title.localeCompare(b.title, 'ja');
+      return a.id.localeCompare(b.id); // 'id'（デフォルト）
+    });
+    worksHtml = sortedWorks.map(w => {
       const brand = ledgerData.brands.find(b => b.id === w.brandId);
       const aliases = w.aliases || [];
       return `
@@ -706,10 +714,19 @@ function renderWorkMaster() {
   const titleCandidatesHtml = unregisteredTitles.map(t => `<option value="${escapeHtml(t)}">`).join('');
   const issuerCandidatesHtml = unregisteredIssuers.map(t => `<option value="${escapeHtml(t)}">`).join('');
 
+  const workSortOptions = [
+    { value: 'id', label: '作品ID順' },
+    { value: 'title', label: 'タイトル（あいうえ順）' }
+  ];
+  const workSortSelectHtml = `
+    <select id="workSortSelect" style="${inputStyle}margin-bottom:12px;width:auto;">
+      ${workSortOptions.map(o => `<option value="${o.value}" ${o.value === workSortOrder ? 'selected' : ''}>${o.label}</option>`).join('')}
+    </select>`;
+
   el.innerHTML = `
     <div class="section-title">作品</div>
     <div class="master-layout">
-      <div class="master-list">${worksHtml}</div>
+      <div class="master-list">${workSortSelectHtml}${worksHtml}</div>
       <div class="master-form-sticky">
         <div class="card">
           <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">新規作品登録</div>
@@ -742,6 +759,11 @@ function renderWorkMaster() {
       </div>
     </div>
   `;
+
+  document.getElementById('workSortSelect').onchange = (e) => {
+    workSortOrder = e.target.value;
+    renderWorkMaster();
+  };
 
   document.getElementById('btnAddBrand').onclick = () => {
     const name = document.getElementById('newBrandName').value.trim();
@@ -981,6 +1003,17 @@ function formatNoteDatetime(raw) {
   return `${y}/${mo}/${d} ${h}:${mi}`;
 }
 
+// 顧客一覧の並び替え（customerSortOrderに応じて破壊的にソート）
+function sortCustomerRows(rows) {
+  if (customerSortOrder === 'amount_asc') {
+    rows.sort((a, b) => a.total - b.total);
+  } else if (customerSortOrder === 'name') {
+    rows.sort((a, b) => a.customer.displayName.localeCompare(b.customer.displayName, 'ja'));
+  } else {
+    rows.sort((a, b) => b.total - a.total); // amount_desc（デフォルト）
+  }
+}
+
 function renderCustomerList() {
   const el = document.getElementById('view-customerList');
   const unregisteredBuyers = getUnregisteredBuyerNames();
@@ -1006,12 +1039,24 @@ function renderCustomerList() {
     const sales = ledgerData.sales.filter(s => s.customerId === c.id);
     const total = sales.reduce((sum, s) => sum + s.amount, 0);
     return { customer: c, sales, total };
-  }).sort((a, b) => b.total - a.total);
+  });
+  sortCustomerRows(rows);
+
+  const sortOptions = [
+    { value: 'amount_desc', label: '購入額が多い順' },
+    { value: 'amount_asc', label: '購入額が少ない順' },
+    { value: 'name', label: '名前（あいうえ順）' }
+  ];
+  const sortSelectHtml = `
+    <select id="customerSortSelect" style="${inputStyle}margin-bottom:12px;width:auto;">
+      ${sortOptions.map(o => `<option value="${o.value}" ${o.value === customerSortOrder ? 'selected' : ''}>${o.label}</option>`).join('')}
+    </select>`;
 
   el.innerHTML = `
-    <div class="section-title">顧客一覧（購入額の多い順）</div>
+    <div class="section-title">顧客一覧</div>
     <div class="master-layout">
       <div class="master-list">
+        ${sortSelectHtml}
         ${rows.map(r => `
           <div class="card" data-customer-card="${r.customer.id}" style="cursor:pointer;">
             <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -1037,6 +1082,11 @@ function renderCustomerList() {
 
   document.getElementById('btnAddCustomer').onclick = addCustomerDirect;
 
+  document.getElementById('customerSortSelect').onchange = (e) => {
+    customerSortOrder = e.target.value;
+    renderCustomerList();
+  };
+
   el.querySelectorAll('[data-customer-card]').forEach(card => card.onclick = () => {
     const id = card.dataset.customerCard;
     openCustomerDetail(id);
@@ -1061,12 +1111,24 @@ function openCustomerDetail(id) {
     return `・${formatNoteDatetime(s.datetime)} ${work ? work.title : s.contentNameRaw} ¥${s.amount}`;
   }).join('\n');
 
+  const newName = prompt(
+    `${c.displayName} の購入履歴：\n${salesListText || '（購入履歴なし）'}\n\n顧客の表示名を編集（そのままEnterで変更なし）：`,
+    c.displayName
+  );
+  if (newName === null) return; // キャンセル時は名前もメモも変更しない
+  const trimmedName = newName.trim();
+  if (!trimmedName) {
+    alert('表示名を空にはできません。変更を中止しました。');
+    return;
+  }
+  c.displayName = trimmedName;
+
   const newMemo = prompt(
-    `${c.displayName} の購入履歴：\n${salesListText || '（購入履歴なし）'}\n\nメモを編集（そのままEnterで変更なし）：`,
+    `メモを編集（そのままEnterで変更なし）：`,
     c.memo || ''
   );
-  if (newMemo === null) return;
-  c.memo = newMemo.trim();
+  if (newMemo !== null) c.memo = newMemo.trim();
+
   markDirty();
   renderCustomerList();
 }
