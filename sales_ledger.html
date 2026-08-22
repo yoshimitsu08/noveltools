@@ -233,7 +233,7 @@ function emptyData() {
   return {
     version: DATA_VERSION,
     brands: [],      // {id, noteName, brandName}
-    works: [],        // {id, title, brandId, memo}
+    works: [],        // {id, title, brandId, memo, aliases: [表記ゆれの別タイトル文字列, ...]}
     sales: [],        // {txId, datetime, buyerNameRaw, workId, contentNameRaw, amount, amountExTax, tax, paymentMethod, customerId}
     customers: [],    // {id, displayName, memo, createdAt}
     meta: {
@@ -288,6 +288,13 @@ function updateExportWarning() {
   } else {
     badge.classList.remove('show');
   }
+}
+
+// 作品タイトルの完全一致、または登録済み別名（alias）との一致で作品を検索する
+function findWorkByTitleOrAlias(contentName) {
+  return ledgerData.works.find(w =>
+    w.title === contentName || (w.aliases && w.aliases.includes(contentName))
+  );
 }
 
 function genId(prefix) {
@@ -365,7 +372,7 @@ function importNoteCSV(text) {
 
     const contentName = (r[NOTE_CSV_COLS.contentName] || '').trim();
     const issuer = (r[NOTE_CSV_COLS.issuer] || '').trim();
-    const matchedWork = ledgerData.works.find(w => w.title === contentName);
+    const matchedWork = findWorkByTitleOrAlias(contentName);
     if (!matchedWork) unmatchedContentNames.add(contentName);
 
     ledgerData.sales.push({
@@ -610,6 +617,7 @@ function renderWorkMaster() {
   } else {
     worksHtml = ledgerData.works.map(w => {
       const brand = ledgerData.brands.find(b => b.id === w.brandId);
+      const aliases = w.aliases || [];
       return `
         <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div style="flex:1;">
@@ -617,6 +625,16 @@ function renderWorkMaster() {
             <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(w.title)}</div>
             <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
             ${w.memo ? `<div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">${escapeHtml(w.memo)}</div>` : ''}
+            ${aliases.length > 0 ? `
+              <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+                <div style="color:var(--text3);font-size:0.72rem;margin-bottom:4px;">別名（表記ゆれ）</div>
+                ${aliases.map(a => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:3px;">
+                    <span style="color:var(--text2);font-size:0.76rem;">${escapeHtml(a)}</span>
+                    <button data-del-alias="${w.id}|||${escapeHtml(a)}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.7rem;text-decoration:underline;flex-shrink:0;">解除</button>
+                  </div>
+                `).join('')}
+              </div>` : ''}
           </div>
           <button class="btn danger" data-del-work="${w.id}" style="font-size:0.72rem;padding:6px 10px;">削除</button>
         </div>`;
@@ -689,7 +707,7 @@ function renderWorkMaster() {
     if (!isValidWorkId(id)) { alert('作品IDに使えるのは英数字・ハイフン（-）・アンダーバー（_）のみです。'); return; }
     if (ledgerData.works.some(w => w.id === id)) { alert(`作品ID「${id}」は既に使われています。別のIDを指定してください。`); return; }
     if (!title) { alert('作品タイトルを入力してください。'); return; }
-    ledgerData.works.push({ id, title, brandId: brandId || null, memo });
+    ledgerData.works.push({ id, title, brandId: brandId || null, memo, aliases: [] });
     markDirty();
     // 新規作品追加時、既存の未紐づけ売上があれば自動で紐づけを試みる
     relinkUnmatchedSales();
@@ -715,14 +733,30 @@ function renderWorkMaster() {
     renderWorkMaster();
     updateUnlinkedBadge();
   });
+
+  el.querySelectorAll('[data-del-alias]').forEach(b => b.onclick = () => {
+    const [workId, alias] = b.dataset.delAlias.split('|||');
+    if (!confirm(`別名「${alias}」の紐づけを解除しますか？（この表記の売上データは「未紐づけ」に戻ります）`)) return;
+    const work = ledgerData.works.find(w => w.id === workId);
+    if (work && work.aliases) {
+      work.aliases = work.aliases.filter(a => a !== alias);
+    }
+    // この表記で紐づいていた売上を未紐づけに戻す
+    ledgerData.sales.forEach(s => {
+      if (s.workId === workId && s.contentNameRaw === alias) s.workId = null;
+    });
+    markDirty();
+    renderWorkMaster();
+    updateUnlinkedBadge();
+  });
 }
 
-// 作品タイトルの完全一致で、未紐づけ売上に自動で紐づけを試みる
+// 作品タイトル・別名の完全一致で、未紐づけ売上に自動で紐づけを試みる
 function relinkUnmatchedSales() {
   let relinked = 0;
   ledgerData.sales.forEach(s => {
     if (!s.workId) {
-      const match = ledgerData.works.find(w => w.title === s.contentNameRaw);
+      const match = findWorkByTitleOrAlias(s.contentNameRaw);
       if (match) { s.workId = match.id; relinked++; }
     }
   });
@@ -733,10 +767,9 @@ function relinkUnmatchedSales() {
 // CSVインポートで蓄積された売上データから、まだマスタ未登録の候補値一覧を取得する
 // （これを選択肢として出すことで、表記ゆれによる「同じはずなのに別物扱い」を防ぐ）
 function getUnregisteredContentNames() {
-  const registeredTitles = new Set(ledgerData.works.map(w => w.title));
   const names = new Set();
   ledgerData.sales.forEach(s => {
-    if (s.contentNameRaw && !registeredTitles.has(s.contentNameRaw)) names.add(s.contentNameRaw);
+    if (s.contentNameRaw && !findWorkByTitleOrAlias(s.contentNameRaw)) names.add(s.contentNameRaw);
   });
   return Array.from(names).sort();
 }
@@ -833,7 +866,25 @@ function renderUnlinked() {
     const workId = e.target.value;
     if (!workId) return;
     const sale = ledgerData.sales.find(s => s.txId === txId);
-    if (sale) { sale.workId = workId; markDirty(); renderUnlinked(); updateUnlinkedBadge(); }
+    if (!sale) return;
+    sale.workId = workId;
+
+    // 紐づけた表記が、その作品のタイトル・既存の別名のいずれとも違う場合、
+    // 表記ゆれとして自動で別名登録する（次回以降のCSV取込で自動紐づけされるようにするため）
+    const work = ledgerData.works.find(w => w.id === workId);
+    if (work && sale.contentNameRaw && sale.contentNameRaw !== work.title) {
+      if (!work.aliases) work.aliases = [];
+      if (!work.aliases.includes(sale.contentNameRaw)) {
+        work.aliases.push(sale.contentNameRaw);
+      }
+    }
+
+    // この別名登録により、他にも同じ表記で未紐づけのままだった売上があれば一括で紐づける
+    relinkUnmatchedSales();
+
+    markDirty();
+    renderUnlinked();
+    updateUnlinkedBadge();
   });
 
   el.querySelectorAll('[data-link-customer]').forEach(sel => sel.onchange = (e) => {
