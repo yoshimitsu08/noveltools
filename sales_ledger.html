@@ -595,6 +595,11 @@ function formatDateTimeJP(iso) {
   return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// 作品ID用バリデーション：英数字・ハイフン・アンダーバーのみ許可
+function isValidWorkId(id) {
+  return /^[A-Za-z0-9_-]+$/.test(id);
+}
+
 function renderWorkMaster() {
   const el = document.getElementById('view-workMaster');
   const brandOptions = ledgerData.brands.map(b => `<option value="${b.id}">${escapeHtml(b.brandName)}</option>`).join('');
@@ -608,7 +613,8 @@ function renderWorkMaster() {
       return `
         <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div style="flex:1;">
-            <div style="font-family:var(--font-ui);color:var(--text);">${escapeHtml(w.title)}</div>
+            <div style="color:var(--accent);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">${escapeHtml(w.id)}</div>
+            <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(w.title)}</div>
             <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
             ${w.memo ? `<div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">${escapeHtml(w.memo)}</div>` : ''}
           </div>
@@ -642,7 +648,8 @@ function renderWorkMaster() {
     <div class="card">
       <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">新規作品登録</div>
       ${unregisteredTitles.length > 0 ? `<div style="color:var(--text3);font-size:0.75rem;margin-bottom:8px;">💡 CSVに含まれる未登録タイトルが${unregisteredTitles.length}件あります。下の欄に入力すると候補が出ます。</div>` : ''}
-      <input type="text" id="newWorkTitle" list="titleCandidates" placeholder="作品タイトル（noteの掲載名と一致させてください）" style="${inputStyle}" autocomplete="off">
+      <input type="text" id="newWorkId" placeholder="作品ID（英数字・ハイフン・アンダーバーのみ。例：FK-001）" style="${inputStyle}">
+      <input type="text" id="newWorkTitle" list="titleCandidates" placeholder="作品タイトル（noteの掲載名と一致させてください）" style="${inputStyle}margin-top:8px;" autocomplete="off">
       <datalist id="titleCandidates">${titleCandidatesHtml}</datalist>
       <select id="newWorkBrand" style="${inputStyle}margin-top:8px;">
         <option value="">ブランドを選択</option>
@@ -674,11 +681,15 @@ function renderWorkMaster() {
   };
 
   document.getElementById('btnAddWork').onclick = () => {
+    const id = document.getElementById('newWorkId').value.trim();
     const title = document.getElementById('newWorkTitle').value.trim();
     const brandId = document.getElementById('newWorkBrand').value;
     const memo = document.getElementById('newWorkMemo').value.trim();
+    if (!id) { alert('作品IDを入力してください。'); return; }
+    if (!isValidWorkId(id)) { alert('作品IDに使えるのは英数字・ハイフン（-）・アンダーバー（_）のみです。'); return; }
+    if (ledgerData.works.some(w => w.id === id)) { alert(`作品ID「${id}」は既に使われています。別のIDを指定してください。`); return; }
     if (!title) { alert('作品タイトルを入力してください。'); return; }
-    ledgerData.works.push({ id: genId('work'), title, brandId: brandId || null, memo });
+    ledgerData.works.push({ id, title, brandId: brandId || null, memo });
     markDirty();
     // 新規作品追加時、既存の未紐づけ売上があれば自動で紐づけを試みる
     relinkUnmatchedSales();
