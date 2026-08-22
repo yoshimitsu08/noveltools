@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger | noveltools</title>
+<style>
+:root {
+  --bg:#1a1814;
+  --bg2:#211f1b;
+  --bg3:#2a2722;
+  --surface:#302d27;
+  --accent:#c8a96e;
+  --text:#e8e0d0;
+  --text2:#a09880;
+  --text3:#706858;
+  --border:#3f3b34;
+  --ok:#7ec8a8;
+  --danger:#c06040;
+  --warn:#d9a45c;
+  --font-ui:'Courier New',monospace;
+  --font-body:'Georgia',serif;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+/* ===== Header ===== */
+header.app-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 16px;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  position:sticky;
+  top:0;
+  z-index:10;
+}
+.app-title {
+  font-family:var(--font-ui);
+  letter-spacing:0.06em;
+  color:var(--accent);
+  font-size:1.15rem;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.app-title .back {
+  color:var(--text3);
+  text-decoration:none;
+  font-size:1rem;
+}
+.export-warning-badge {
+  display:none;
+  align-items:center;
+  gap:6px;
+  background:rgba(217,164,92,0.15);
+  border:1px solid var(--warn);
+  color:var(--warn);
+  font-family:var(--font-ui);
+  font-size:0.72rem;
+  padding:5px 10px;
+  border-radius:20px;
+  white-space:nowrap;
+}
+.export-warning-badge.show { display:flex; }
+
+/* ===== Nav Tabs ===== */
+nav.tabbar {
+  display:flex;
+  overflow-x:auto;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+nav.tabbar::-webkit-scrollbar { display:none; }
+nav.tabbar button {
+  flex:0 0 auto;
+  background:none;
+  border:none;
+  color:var(--text3);
+  font-family:var(--font-ui);
+  font-size:0.78rem;
+  letter-spacing:0.03em;
+  padding:12px 16px;
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  white-space:nowrap;
+}
+nav.tabbar button.active {
+  color:var(--accent);
+  border-bottom-color:var(--accent);
+}
+nav.tabbar button .badge-count {
+  display:inline-block;
+  margin-left:5px;
+  background:var(--danger);
+  color:var(--bg);
+  border-radius:10px;
+  font-size:0.68rem;
+  padding:1px 6px;
+  font-family:var(--font-ui);
+}
+
+/* ===== Main ===== */
+main {
+  flex:1;
+  padding:16px;
+  width:100%;
+  max-width:720px;
+  margin:0 auto;
+}
+.view { display:none; }
+.view.active { display:block; }
+
+.section-title {
+  font-family:var(--font-ui);
+  color:var(--accent);
+  font-size:0.9rem;
+  letter-spacing:0.05em;
+  margin:20px 0 10px;
+}
+.section-title:first-child { margin-top:0; }
+
+.card {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:12px;
+}
+
+.empty-state {
+  text-align:center;
+  color:var(--text3);
+  font-family:var(--font-ui);
+  font-size:0.85rem;
+  padding:40px 20px;
+  line-height:1.8;
+}
+
+button.btn {
+  font-family:var(--font-ui);
+  font-size:0.82rem;
+  letter-spacing:0.03em;
+  background:var(--bg3);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px 16px;
+  cursor:pointer;
+}
+button.btn:active { background:var(--surface); }
+button.btn.primary {
+  background:var(--accent);
+  color:var(--bg);
+  border-color:var(--accent);
+}
+button.btn.danger {
+  color:var(--danger);
+  border-color:var(--danger);
+}
+button.btn.warn {
+  color:var(--warn);
+  border-color:var(--warn);
+}
+
+footer.app-footer {
+  margin-top:auto;
+  padding:16px;
+  text-align:center;
+  color:var(--text3);
+  font-size:0.72rem;
+  font-family:var(--font-ui);
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">
+    <a href="index.html" class="back">←</a>
+    <span>LEDGER</span>
+  </div>
+  <div class="export-warning-badge" id="exportWarningBadge">⚠ 未エクスポート</div>
+</header>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tab-btn active" data-view="dashboard">ダッシュボード</button>
+  <button class="tab-btn" data-view="importExport">インポート/エクスポート</button>
+  <button class="tab-btn" data-view="salesList">売上一覧</button>
+  <button class="tab-btn" data-view="customerList">顧客一覧</button>
+  <button class="tab-btn" data-view="workMaster">作品マスタ</button>
+  <button class="tab-btn" data-view="unlinked">未紐づけ<span class="badge-count" id="unlinkedCount" style="display:none;">0</span></button>
+</nav>
+
+<main>
+  <div class="view active" id="view-dashboard">
+    <div class="empty-state">まだデータがありません。<br>「インポート/エクスポート」タブから始めましょう。</div>
+  </div>
+  <div class="view" id="view-importExport"></div>
+  <div class="view" id="view-salesList"></div>
+  <div class="view" id="view-customerList"></div>
+  <div class="view" id="view-workMaster"></div>
+  <div class="view" id="view-unlinked"></div>
+</main>
+
+<footer class="app-footer">Ledger / noveltools</footer>
+
+<script>
+/* =========================================================
+   Ledger データモデル
+   ========================================================= */
+const STORAGE_KEY = 'ledger_data_v1';
+const DATA_VERSION = 1;
+
+function emptyData() {
+  return {
+    version: DATA_VERSION,
+    brands: [],      // {id, noteName, brandName}
+    works: [],        // {id, title, brandId, memo}
+    sales: [],        // {txId, datetime, buyerNameRaw, workId, contentNameRaw, amount, amountExTax, tax, paymentMethod, customerId}
+    customers: [],    // {id, displayName, memo, createdAt}
+    meta: {
+      lastImportAt: null,
+      lastExportAt: null,
+      exportedFlag: true // true = 現在のデータはエクスポート済み。false = 未エクスポートの変更あり
+    }
+  };
+}
+
+let ledgerData = loadData();
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return emptyData();
+    const parsed = JSON.parse(raw);
+    if (!parsed.version) return emptyData();
+    return parsed;
+  } catch (e) {
+    console.error('データ読み込みエラー:', e);
+    return emptyData();
+  }
+}
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ledgerData));
+  } catch (e) {
+    console.error('データ保存エラー:', e);
+    alert('データの一時保存に失敗しました。ブラウザのストレージ容量を確認してください。');
+  }
+}
+
+function markDirty() {
+  ledgerData.meta.exportedFlag = false;
+  saveData();
+  updateExportWarning();
+}
+
+function markExported() {
+  ledgerData.meta.exportedFlag = true;
+  ledgerData.meta.lastExportAt = new Date().toISOString();
+  saveData();
+  updateExportWarning();
+}
+
+function updateExportWarning() {
+  const badge = document.getElementById('exportWarningBadge');
+  if (!ledgerData.meta.exportedFlag && (ledgerData.sales.length > 0 || ledgerData.customers.length > 0)) {
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+
+function genId(prefix) {
+  return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+/* =========================================================
+   CSVパース（note販売履歴CSV / UTF-8 BOM対応）
+   ========================================================= */
+function parseCSV(text) {
+  // BOM除去
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* skip, \r\n の \n 側で改行処理 */ }
+      else { field += c; }
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''));
+}
+
+// note販売履歴CSVの列インデックス定義
+const NOTE_CSV_COLS = {
+  datetime: 0,      // 決済/返金日時
+  buyerName: 1,     // 購入者名
+  paymentType: 2,   // 決済種別
+  paymentMethod: 3, // 決済方法
+  contentType: 4,   // コンテンツ種別
+  contentName: 5,   // コンテンツ名
+  amount: 6,        // 販売額
+  taxRate: 7,        // 消費税率
+  amountExTax: 8,   // 税抜販売額
+  tax: 9,            // 消費税額
+  pointUsed: 10,     // ポイント利用
+  txId: 11,          // 取引ID
+  issuer: 12,        // 発行事業者
+  invoiceNo: 13       // 適格事業者登録番号
+};
+
+function importNoteCSV(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) {
+    return { added: 0, skipped: 0, error: 'CSVにデータ行が見つかりませんでした。' };
+  }
+  const header = rows[0];
+  if (!header[NOTE_CSV_COLS.txId] || !header[NOTE_CSV_COLS.txId].includes('取引ID')) {
+    return { added: 0, skipped: 0, error: '想定していたnote販売履歴CSVの形式と一致しませんでした（「取引ID」列が見つかりません）。' };
+  }
+
+  const existingTxIds = new Set(ledgerData.sales.map(s => s.txId));
+  let added = 0, skipped = 0;
+  const unmatchedContentNames = new Set();
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const txId = (r[NOTE_CSV_COLS.txId] || '').trim();
+    if (!txId) continue;
+    if (existingTxIds.has(txId)) { skipped++; continue; }
+
+    const contentName = (r[NOTE_CSV_COLS.contentName] || '').trim();
+    const issuer = (r[NOTE_CSV_COLS.issuer] || '').trim();
+    const matchedWork = ledgerData.works.find(w => w.title === contentName);
+    if (!matchedWork) unmatchedContentNames.add(contentName);
+
+    ledgerData.sales.push({
+      txId,
+      datetime: (r[NOTE_CSV_COLS.datetime] || '').trim(),
+      buyerNameRaw: (r[NOTE_CSV_COLS.buyerName] || '').trim(),
+      workId: matchedWork ? matchedWork.id : null,
+      contentNameRaw: contentName,
+      issuerRaw: issuer,
+      amount: Number(r[NOTE_CSV_COLS.amount] || 0),
+      amountExTax: Number(r[NOTE_CSV_COLS.amountExTax] || 0),
+      tax: Number(r[NOTE_CSV_COLS.tax] || 0),
+      paymentMethod: (r[NOTE_CSV_COLS.paymentMethod] || '').trim(),
+      customerId: null,
+      guestChecked: false // true = 「このゲストは調べなくてOK（追跡不能・特定不要）」とマーク済み
+    });
+    existingTxIds.add(txId);
+    added++;
+  }
+
+  ledgerData.meta.lastImportAt = new Date().toISOString();
+  markDirty();
+  return { added, skipped, unmatchedContentNames: Array.from(unmatchedContentNames) };
+}
+
+/* =========================================================
+   マスターJSONのインポート/エクスポート
+   ========================================================= */
+function exportMasterJSON() {
+  const blob = new Blob([JSON.stringify(ledgerData, null, 2)], { type: 'application/json' });
+  const filename = 'ledger_' + formatDateForFilename() + '.json';
+  downloadBlob(blob, filename);
+  markExported();
+}
+
+function exportCSVForExcel() {
+  // 売上一覧をExcel互換CSVとして書き出す（閲覧用、正本データには影響しない）
+  const headers = ['取引ID', '決済日時', '購入者名', '顧客ID', '作品名', 'ブランド名', '販売額', '税抜額', '消費税額', '決済方法'];
+  const lines = [headers.join(',')];
+  for (const s of ledgerData.sales) {
+    const work = ledgerData.works.find(w => w.id === s.workId);
+    const brand = work ? ledgerData.brands.find(b => b.id === work.brandId) : null;
+    const cols = [
+      s.txId,
+      s.datetime,
+      s.buyerNameRaw,
+      s.customerId || '',
+      work ? work.title : s.contentNameRaw,
+      brand ? brand.brandName : '',
+      s.amount,
+      s.amountExTax,
+      s.tax,
+      s.paymentMethod
+    ].map(csvEscape);
+    lines.push(cols.join(','));
+  }
+  const csvContent = '\uFEFF' + lines.join('\r\n'); // BOM付きでExcel文字化け対策
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  downloadBlob(blob, 'ledger_export_' + formatDateForFilename() + '.csv');
+}
+
+function csvEscape(v) {
+  const s = String(v ?? '');
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function formatDateForFilename() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function importMasterJSON(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed.version) throw new Error('不正な形式です');
+      ledgerData = parsed;
+      ledgerData.meta.exportedFlag = true; // 読み込み直後は「エクスポート済み状態と同じ」とみなす
+      saveData();
+      updateExportWarning();
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* =========================================================
+   Tab switching
+   ========================================================= */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    renderCurrentView(btn.dataset.view);
+  });
+});
+
+function renderImportExport() {
+  const el = document.getElementById('view-importExport');
+  const lastImport = ledgerData.meta.lastImportAt ? formatDateTimeJP(ledgerData.meta.lastImportAt) : '（まだ）';
+  const lastExport = ledgerData.meta.lastExportAt ? formatDateTimeJP(ledgerData.meta.lastExportAt) : '（まだ）';
+  const dirty = !ledgerData.meta.exportedFlag;
+
+  el.innerHTML = `
+    <div class="section-title">前回データの読み込み</div>
+    <div class="card">
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:12px;">
+        前回エクスポートしたLedgerのJSONファイルを読み込みます。作業を再開するときはここから。
+      </p>
+      <input type="file" id="masterJsonInput" accept="application/json" style="display:none;">
+      <button class="btn primary" id="btnImportMaster">JSONファイルを選択して読み込む</button>
+      <div id="masterImportResult" style="margin-top:10px;font-size:0.82rem;"></div>
+    </div>
+
+    <div class="section-title">noteの売上CSVを取り込む</div>
+    <div class="card">
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:12px;">
+        noteの管理画面からダウンロードした販売履歴CSVを取り込みます。既にあるデータ（取引ID）は自動でスキップされ、新規分だけ追加されます。
+      </p>
+      <input type="file" id="noteCsvInput" accept=".csv" style="display:none;">
+      <button class="btn primary" id="btnImportCsv">CSVファイルを選択して取り込む</button>
+      <div id="csvImportResult" style="margin-top:10px;font-size:0.82rem;"></div>
+    </div>
+
+    <div class="section-title">保存（エクスポート）</div>
+    <div class="card">
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:4px;">
+        作業を終えるときは、必ずここでJSONを保存してください。次回はこのファイルから再開します。
+      </p>
+      ${dirty ? `<p style="color:var(--warn);font-size:0.82rem;margin-bottom:12px;">⚠ 前回のエクスポート以降、未保存の変更があります</p>` : `<p style="color:var(--ok);font-size:0.82rem;margin-bottom:12px;">✓ 現在の内容はすべて保存済みです</p>`}
+      <button class="btn primary" id="btnExportMaster">JSONで保存する（正本データ）</button>
+    </div>
+
+    <div class="section-title">その他</div>
+    <div class="card">
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:12px;">
+        Excelで確認したいときだけ使う書き出しです。正本データの保存状態には影響しません。
+      </p>
+      <button class="btn" id="btnExportCsv">Excel用CSVを書き出す</button>
+    </div>
+
+    <div class="section-title">状態</div>
+    <div class="card" style="font-size:0.82rem;color:var(--text2);line-height:2;">
+      前回インポート：${lastImport}<br>
+      前回エクスポート：${lastExport}<br>
+      売上件数：${ledgerData.sales.length}件 ／ 顧客：${ledgerData.customers.length}件 ／ 作品：${ledgerData.works.length}件
+    </div>
+  `;
+
+  document.getElementById('btnImportMaster').onclick = () => document.getElementById('masterJsonInput').click();
+  document.getElementById('masterJsonInput').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (dirty && !confirm('未保存の変更があります。読み込むと現在の作業内容は上書きされます。続けますか？')) {
+      e.target.value = '';
+      return;
+    }
+    importMasterJSON(file, (err) => {
+      const resultEl = document.getElementById('masterImportResult');
+      if (err) {
+        resultEl.innerHTML = `<span style="color:var(--danger);">読み込みに失敗しました：${err.message}</span>`;
+      } else {
+        resultEl.innerHTML = `<span style="color:var(--ok);">読み込みが完了しました。</span>`;
+        renderImportExport();
+        renderCurrentView('dashboard');
+      }
+    });
+  };
+
+  document.getElementById('btnImportCsv').onclick = () => document.getElementById('noteCsvInput').click();
+  document.getElementById('noteCsvInput').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = importNoteCSV(ev.target.result);
+      const resultEl = document.getElementById('csvImportResult');
+      if (result.error) {
+        resultEl.innerHTML = `<span style="color:var(--danger);">${result.error}</span>`;
+      } else {
+        let msg = `<span style="color:var(--ok);">新規 ${result.added}件を追加しました（重複スキップ ${result.skipped}件）。</span>`;
+        if (result.unmatchedContentNames && result.unmatchedContentNames.length > 0) {
+          msg += `<br><span style="color:var(--warn);">作品未紐づけが ${result.unmatchedContentNames.length}件あります。「未紐づけ」タブで対応してください。</span>`;
+        }
+        resultEl.innerHTML = msg;
+        renderImportExport();
+        updateUnlinkedBadge();
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  };
+
+  document.getElementById('btnExportMaster').onclick = () => {
+    exportMasterJSON();
+    renderImportExport();
+  };
+
+  document.getElementById('btnExportCsv').onclick = () => {
+    exportCSVForExcel();
+  };
+}
+
+function formatDateTimeJP(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderWorkMaster() {
+  const el = document.getElementById('view-workMaster');
+  const brandOptions = ledgerData.brands.map(b => `<option value="${b.id}">${escapeHtml(b.brandName)}</option>`).join('');
+
+  let worksHtml = '';
+  if (ledgerData.works.length === 0) {
+    worksHtml = `<div class="empty-state">まだ作品が登録されていません。</div>`;
+  } else {
+    worksHtml = ledgerData.works.map(w => {
+      const brand = ledgerData.brands.find(b => b.id === w.brandId);
+      return `
+        <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div style="flex:1;">
+            <div style="font-family:var(--font-ui);color:var(--text);">${escapeHtml(w.title)}</div>
+            <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
+            ${w.memo ? `<div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">${escapeHtml(w.memo)}</div>` : ''}
+          </div>
+          <button class="btn danger" data-del-work="${w.id}" style="font-size:0.72rem;padding:6px 10px;">削除</button>
+        </div>`;
+    }).join('');
+  }
+
+  let brandsHtml = '';
+  if (ledgerData.brands.length === 0) {
+    brandsHtml = `<div class="empty-state">まだブランドが登録されていません。先にブランドを登録してください。</div>`;
+  } else {
+    brandsHtml = ledgerData.brands.map(b => `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-family:var(--font-ui);">${escapeHtml(b.brandName)}</div>
+          <div style="color:var(--text3);font-size:0.75rem;margin-top:2px;">note表示名: ${escapeHtml(b.noteName)}</div>
+        </div>
+        <button class="btn danger" data-del-brand="${b.id}" style="font-size:0.72rem;padding:6px 10px;">削除</button>
+      </div>`).join('');
+  }
+
+  el.innerHTML = `
+    <div class="section-title">ブランド</div>
+    ${brandsHtml}
+    <div class="card">
+      <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">新規ブランド登録</div>
+      <input type="text" id="newBrandName" placeholder="ブランド名（例：藤岡香織）" style="${inputStyle}">
+      <input type="text" id="newBrandNoteName" placeholder="note表示名（発行事業者名。例：官能小説家～背徳と禁忌～）" style="${inputStyle}margin-top:8px;">
+      <button class="btn primary" id="btnAddBrand" style="margin-top:10px;">追加</button>
+    </div>
+
+    <div class="section-title">作品</div>
+    ${worksHtml}
+    <div class="card">
+      <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">新規作品登録</div>
+      <input type="text" id="newWorkTitle" placeholder="作品タイトル（noteの掲載名と一致させてください）" style="${inputStyle}">
+      <select id="newWorkBrand" style="${inputStyle}margin-top:8px;">
+        <option value="">ブランドを選択</option>
+        ${brandOptions}
+      </select>
+      <input type="text" id="newWorkMemo" placeholder="メモ（任意）" style="${inputStyle}margin-top:8px;">
+      <button class="btn primary" id="btnAddWork" style="margin-top:10px;">追加</button>
+    </div>
+  `;
+
+  document.getElementById('btnAddBrand').onclick = () => {
+    const name = document.getElementById('newBrandName').value.trim();
+    const noteName = document.getElementById('newBrandNoteName').value.trim();
+    if (!name || !noteName) { alert('ブランド名とnote表示名の両方を入力してください。'); return; }
+    ledgerData.brands.push({ id: genId('brand'), noteName, brandName: name });
+    markDirty();
+    renderWorkMaster();
+  };
+
+  document.getElementById('btnAddWork').onclick = () => {
+    const title = document.getElementById('newWorkTitle').value.trim();
+    const brandId = document.getElementById('newWorkBrand').value;
+    const memo = document.getElementById('newWorkMemo').value.trim();
+    if (!title) { alert('作品タイトルを入力してください。'); return; }
+    ledgerData.works.push({ id: genId('work'), title, brandId: brandId || null, memo });
+    markDirty();
+    // 新規作品追加時、既存の未紐づけ売上があれば自動で紐づけを試みる
+    relinkUnmatchedSales();
+    renderWorkMaster();
+    updateUnlinkedBadge();
+  };
+
+  el.querySelectorAll('[data-del-brand]').forEach(b => b.onclick = () => {
+    if (!confirm('このブランドを削除しますか？（紐づく作品のブランド設定は解除されます）')) return;
+    const id = b.dataset.delBrand;
+    ledgerData.brands = ledgerData.brands.filter(x => x.id !== id);
+    ledgerData.works.forEach(w => { if (w.brandId === id) w.brandId = null; });
+    markDirty();
+    renderWorkMaster();
+  });
+
+  el.querySelectorAll('[data-del-work]').forEach(b => b.onclick = () => {
+    if (!confirm('この作品を削除しますか？（紐づく売上データは「未紐づけ」に戻ります）')) return;
+    const id = b.dataset.delWork;
+    ledgerData.works = ledgerData.works.filter(x => x.id !== id);
+    ledgerData.sales.forEach(s => { if (s.workId === id) s.workId = null; });
+    markDirty();
+    renderWorkMaster();
+    updateUnlinkedBadge();
+  });
+}
+
+// 作品タイトルの完全一致で、未紐づけ売上に自動で紐づけを試みる
+function relinkUnmatchedSales() {
+  let relinked = 0;
+  ledgerData.sales.forEach(s => {
+    if (!s.workId) {
+      const match = ledgerData.works.find(w => w.title === s.contentNameRaw);
+      if (match) { s.workId = match.id; relinked++; }
+    }
+  });
+  if (relinked > 0) saveData();
+  return relinked;
+}
+
+const inputStyle = "width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;";
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function renderUnlinked() {
+  const el = document.getElementById('view-unlinked');
+  const workUnlinkedSales = ledgerData.sales.filter(s => !s.workId);
+  const guestSales = ledgerData.sales.filter(s => !s.customerId && !s.guestChecked);
+  const guestCheckedSales = ledgerData.sales.filter(s => !s.customerId && s.guestChecked);
+
+  const workOptions = ledgerData.works.map(w => `<option value="${w.id}">${escapeHtml(w.title)}</option>`).join('');
+  const customerOptions = ledgerData.customers.map(c => `<option value="${c.id}">${escapeHtml(c.displayName)}</option>`).join('');
+
+  let workSectionHtml = '';
+  if (workUnlinkedSales.length === 0) {
+    workSectionHtml = `<div class="empty-state">作品未紐づけの売上はありません。</div>`;
+  } else {
+    workSectionHtml = workUnlinkedSales.map(s => `
+      <div class="card">
+        <div style="font-size:0.85rem;">${escapeHtml(s.contentNameRaw)}</div>
+        <div style="color:var(--text3);font-size:0.75rem;margin:4px 0 10px;">取引ID: ${s.txId} ／ ${formatNoteDatetime(s.datetime)}</div>
+        <select data-link-work="${s.txId}" style="${inputStyle}">
+          <option value="">この売上をどの作品に紐づけますか？</option>
+          ${workOptions}
+        </select>
+      </div>`).join('');
+  }
+
+  let guestSectionHtml = '';
+  if (guestSales.length === 0) {
+    guestSectionHtml = `<div class="empty-state">未対応のゲスト購入はありません。</div>`;
+  } else {
+    guestSectionHtml = guestSales.map(s => {
+      const work = ledgerData.works.find(w => w.id === s.workId);
+      return `
+      <div class="card">
+        <div style="font-size:0.85rem;">${work ? escapeHtml(work.title) : escapeHtml(s.contentNameRaw)}</div>
+        <div style="color:var(--text3);font-size:0.75rem;margin:4px 0 10px;">取引ID: ${s.txId} ／ ${formatNoteDatetime(s.datetime)} ／ ¥${s.amount}</div>
+        <select data-link-customer="${s.txId}" style="${inputStyle}margin-bottom:8px;">
+          <option value="">既存の顧客に紐づける</option>
+          ${customerOptions}
+        </select>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" data-new-customer="${s.txId}" style="flex:1;font-size:0.78rem;">新規顧客として登録</button>
+          <button class="btn warn" data-mark-checked="${s.txId}" style="flex:1;font-size:0.78rem;">調査不要（このままでOK）</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = `
+    <div class="section-title">作品の未紐づけ（${workUnlinkedSales.length}件）</div>
+    ${workSectionHtml}
+
+    <div class="section-title">ゲスト購入者の未特定（${guestSales.length}件）</div>
+    <p style="color:var(--text2);font-size:0.8rem;margin-bottom:10px;">noteのアカウントページURLなどから本人を特定できたら顧客に紐づけてください。特定できない場合は「調査不要」でOKです。</p>
+    ${guestSectionHtml}
+
+    ${guestCheckedSales.length > 0 ? `
+    <div class="section-title" style="color:var(--text3);">調査不要マーク済み（${guestCheckedSales.length}件）</div>
+    <div class="card" style="color:var(--text3);font-size:0.78rem;">
+      ${guestCheckedSales.map(s => `${escapeHtml(s.buyerNameRaw)} ／ ${s.txId.slice(0,8)}… <button data-unmark-checked="${s.txId}" style="background:none;border:none;color:var(--text2);text-decoration:underline;cursor:pointer;font-size:0.75rem;">戻す</button>`).join('<br>')}
+    </div>` : ''}
+  `;
+
+  el.querySelectorAll('[data-link-work]').forEach(sel => sel.onchange = (e) => {
+    const txId = e.target.dataset.linkWork;
+    const workId = e.target.value;
+    if (!workId) return;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (sale) { sale.workId = workId; markDirty(); renderUnlinked(); updateUnlinkedBadge(); }
+  });
+
+  el.querySelectorAll('[data-link-customer]').forEach(sel => sel.onchange = (e) => {
+    const txId = e.target.dataset.linkCustomer;
+    const customerId = e.target.value;
+    if (!customerId) return;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (sale) { sale.customerId = customerId; markDirty(); renderUnlinked(); }
+  });
+
+  el.querySelectorAll('[data-new-customer]').forEach(btn => btn.onclick = () => {
+    const txId = btn.dataset.newCustomer;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    const name = prompt('顧客の表示名を入力してください（例：noteアカウント名や識別メモ）', sale.buyerNameRaw !== 'ゲスト' ? sale.buyerNameRaw : '');
+    if (!name) return;
+    const newCustomer = { id: genId('cust'), displayName: name.trim(), memo: '', createdAt: new Date().toISOString() };
+    ledgerData.customers.push(newCustomer);
+    sale.customerId = newCustomer.id;
+    markDirty();
+    renderUnlinked();
+  });
+
+  el.querySelectorAll('[data-mark-checked]').forEach(btn => btn.onclick = () => {
+    const txId = btn.dataset.markChecked;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (sale) { sale.guestChecked = true; markDirty(); renderUnlinked(); }
+  });
+
+  el.querySelectorAll('[data-unmark-checked]').forEach(btn => btn.onclick = () => {
+    const txId = btn.dataset.unmarkChecked;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (sale) { sale.guestChecked = false; markDirty(); renderUnlinked(); }
+  });
+}
+
+function formatNoteDatetime(raw) {
+  // note形式 YYYYMMDDhhmmss を読みやすく変換
+  if (!raw || raw.length < 14) return raw;
+  const y = raw.slice(0,4), mo = raw.slice(4,6), d = raw.slice(6,8), h = raw.slice(8,10), mi = raw.slice(10,12);
+  return `${y}/${mo}/${d} ${h}:${mi}`;
+}
+
+function renderCustomerList() {
+  const el = document.getElementById('view-customerList');
+
+  if (ledgerData.customers.length === 0) {
+    el.innerHTML = `<div class="empty-state">まだ顧客が登録されていません。<br>「未紐づけ」タブからゲスト購入者を顧客登録できます。</div>
+      <div class="card">
+        <div style="font-size:0.82rem;color:var(--text2);margin-bottom:8px;">顧客を直接追加</div>
+        <input type="text" id="newCustomerName" placeholder="顧客の表示名" style="${inputStyle}">
+        <button class="btn primary" id="btnAddCustomer" style="margin-top:10px;">追加</button>
+      </div>`;
+    document.getElementById('btnAddCustomer').onclick = addCustomerDirect;
+    return;
+  }
+
+  const rows = ledgerData.customers.map(c => {
+    const sales = ledgerData.sales.filter(s => s.customerId === c.id);
+    const total = sales.reduce((sum, s) => sum + s.amount, 0);
+    return { customer: c, sales, total };
+  }).sort((a, b) => b.total - a.total);
+
+  el.innerHTML = `
+    <div class="section-title">顧客一覧（購入額の多い順）</div>
+    ${rows.map(r => `
+      <div class="card" data-customer-card="${r.customer.id}" style="cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div style="font-family:var(--font-ui);">${escapeHtml(r.customer.displayName)}</div>
+          <div style="color:var(--accent);font-family:var(--font-ui);">¥${r.total.toLocaleString()}</div>
+        </div>
+        <div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">購入 ${r.sales.length}件</div>
+        ${r.customer.memo ? `<div style="color:var(--text2);font-size:0.8rem;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${escapeHtml(r.customer.memo)}</div>` : ''}
+      </div>
+    `).join('')}
+
+    <div class="section-title">顧客を直接追加</div>
+    <div class="card">
+      <input type="text" id="newCustomerName" placeholder="顧客の表示名" style="${inputStyle}">
+      <button class="btn primary" id="btnAddCustomer" style="margin-top:10px;">追加</button>
+    </div>
+  `;
+
+  document.getElementById('btnAddCustomer').onclick = addCustomerDirect;
+
+  el.querySelectorAll('[data-customer-card]').forEach(card => card.onclick = () => {
+    const id = card.dataset.customerCard;
+    openCustomerDetail(id);
+  });
+}
+
+function addCustomerDirect() {
+  const input = document.getElementById('newCustomerName');
+  const name = input.value.trim();
+  if (!name) { alert('表示名を入力してください。'); return; }
+  ledgerData.customers.push({ id: genId('cust'), displayName: name, memo: '', createdAt: new Date().toISOString() });
+  markDirty();
+  renderCustomerList();
+}
+
+function openCustomerDetail(id) {
+  const c = ledgerData.customers.find(x => x.id === id);
+  if (!c) return;
+  const sales = ledgerData.sales.filter(s => s.customerId === id);
+  const salesListText = sales.map(s => {
+    const work = ledgerData.works.find(w => w.id === s.workId);
+    return `・${formatNoteDatetime(s.datetime)} ${work ? work.title : s.contentNameRaw} ¥${s.amount}`;
+  }).join('\n');
+
+  const newMemo = prompt(
+    `${c.displayName} の購入履歴：\n${salesListText || '（購入履歴なし）'}\n\nメモを編集（そのままEnterで変更なし）：`,
+    c.memo || ''
+  );
+  if (newMemo === null) return;
+  c.memo = newMemo.trim();
+  markDirty();
+  renderCustomerList();
+}
+
+function renderSalesList() {
+  const el = document.getElementById('view-salesList');
+
+  if (ledgerData.sales.length === 0) {
+    el.innerHTML = `<div class="empty-state">まだ売上データがありません。<br>「インポート/エクスポート」タブからCSVを取り込んでください。</div>`;
+    return;
+  }
+
+  const sorted = [...ledgerData.sales].sort((a, b) => b.datetime.localeCompare(a.datetime));
+
+  el.innerHTML = `
+    <div class="section-title">売上一覧（${sorted.length}件・新しい順）</div>
+    ${sorted.map(s => {
+      const work = ledgerData.works.find(w => w.id === s.workId);
+      const customer = ledgerData.customers.find(c => c.id === s.customerId);
+      return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div style="font-size:0.85rem;">${work ? escapeHtml(work.title) : `<span style="color:var(--warn);">${escapeHtml(s.contentNameRaw)}（未紐づけ）</span>`}</div>
+          <div style="color:var(--accent);font-family:var(--font-ui);font-size:0.9rem;">¥${s.amount.toLocaleString()}</div>
+        </div>
+        <div style="color:var(--text3);font-size:0.75rem;margin-top:4px;">
+          ${formatNoteDatetime(s.datetime)} ／ ${customer ? escapeHtml(customer.displayName) : escapeHtml(s.buyerNameRaw)}
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+function renderDashboard() {
+  const el = document.getElementById('view-dashboard');
+
+  if (ledgerData.sales.length === 0) {
+    el.innerHTML = `<div class="empty-state">まだデータがありません。<br>「インポート/エクスポート」タブから始めましょう。</div>`;
+    return;
+  }
+
+  const totalAmount = ledgerData.sales.reduce((sum, s) => sum + s.amount, 0);
+  const totalCount = ledgerData.sales.length;
+
+  // ブランド別集計
+  const byBrand = {};
+  ledgerData.sales.forEach(s => {
+    const work = ledgerData.works.find(w => w.id === s.workId);
+    const brand = work ? ledgerData.brands.find(b => b.id === work.brandId) : null;
+    const key = brand ? brand.brandName : '（未紐づけ）';
+    byBrand[key] = (byBrand[key] || 0) + s.amount;
+  });
+  const brandRows = Object.entries(byBrand).sort((a, b) => b[1] - a[1]);
+  const maxBrandAmount = Math.max(...brandRows.map(r => r[1]), 1);
+
+  // 作品別ランキング（上位5）
+  const byWork = {};
+  ledgerData.sales.forEach(s => {
+    const work = ledgerData.works.find(w => w.id === s.workId);
+    const key = work ? work.title : s.contentNameRaw;
+    byWork[key] = (byWork[key] || 0) + s.amount;
+  });
+  const topWorks = Object.entries(byWork).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  el.innerHTML = `
+    <div class="section-title">サマリー</div>
+    <div class="card" style="display:flex;gap:20px;">
+      <div>
+        <div style="color:var(--text3);font-size:0.75rem;">総売上</div>
+        <div style="font-family:var(--font-ui);color:var(--accent);font-size:1.3rem;">¥${totalAmount.toLocaleString()}</div>
+      </div>
+      <div>
+        <div style="color:var(--text3);font-size:0.75rem;">取引件数</div>
+        <div style="font-family:var(--font-ui);color:var(--accent);font-size:1.3rem;">${totalCount}件</div>
+      </div>
+      <div>
+        <div style="color:var(--text3);font-size:0.75rem;">顧客数</div>
+        <div style="font-family:var(--font-ui);color:var(--accent);font-size:1.3rem;">${ledgerData.customers.length}人</div>
+      </div>
+    </div>
+
+    <div class="section-title">ブランド別売上</div>
+    <div class="card">
+      ${brandRows.map(([name, amount]) => `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:4px;">
+            <span>${escapeHtml(name)}</span>
+            <span style="color:var(--text2);">¥${amount.toLocaleString()}</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:var(--accent);height:100%;width:${(amount/maxBrandAmount*100).toFixed(1)}%;"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="section-title">作品別ランキング（上位5）</div>
+    <div class="card">
+      ${topWorks.map(([name, amount], i) => `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+          <span style="font-size:0.85rem;">${i+1}. ${escapeHtml(name)}</span>
+          <span style="color:var(--text2);font-size:0.85rem;">¥${amount.toLocaleString()}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderCurrentView(name) {
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'importExport') renderImportExport();
+  if (name === 'salesList') renderSalesList();
+  if (name === 'customerList') renderCustomerList();
+  if (name === 'workMaster') renderWorkMaster();
+  if (name === 'unlinked') renderUnlinked();
+  updateUnlinkedBadge();
+}
+
+function updateUnlinkedBadge() {
+  // バッジには「作品未紐づけ」のみカウントする。
+  // ゲスト購入者の未特定は、guestCheckedで「調査不要」マークができるため急かす対象に含めない。
+  const workUnlinked = ledgerData.sales.filter(s => !s.workId).length;
+  const badge = document.getElementById('unlinkedCount');
+  if (workUnlinked > 0) {
+    badge.style.display = 'inline-block';
+    badge.textContent = workUnlinked;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// 初期描画
+updateExportWarning();
+renderCurrentView('dashboard');
+</script>
+
+</body>
+</html>
