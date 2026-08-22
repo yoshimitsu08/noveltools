@@ -84,6 +84,9 @@ nav.tabbar {
   scrollbar-width:none;
   min-height:44px;
   flex-shrink:0;
+  position:sticky;
+  top:0;
+  z-index:9;
 }
 nav.tabbar::-webkit-scrollbar { display:none; }
 nav.tabbar button {
@@ -318,6 +321,26 @@ footer.app-footer {
     <div class="modal-actions">
       <button class="btn" id="btnCustomerModalCancel">キャンセル</button>
       <button class="btn primary" id="btnCustomerModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="workEditModal">
+  <div class="modal-sheet">
+    <div class="modal-title">作品情報の編集</div>
+    <div class="modal-field-label">作品ID（英数字・ハイフン・アンダーバーのみ）</div>
+    <input type="text" id="editWorkId" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+    <div class="modal-field-label">作品タイトル</div>
+    <input type="text" id="editWorkTitle" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+    <div class="modal-field-label">ブランド</div>
+    <select id="editWorkBrand" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+      <option value="">ブランドを選択</option>
+    </select>
+    <div class="modal-field-label">メモ</div>
+    <textarea id="editWorkMemo" rows="3" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;resize:vertical;"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="btnWorkModalCancel">キャンセル</button>
+      <button class="btn primary" id="btnWorkModalSave">保存</button>
     </div>
   </div>
 </div>
@@ -747,7 +770,7 @@ function renderWorkMaster() {
       const aliases = w.aliases || [];
       return `
         <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div style="flex:1;">
+          <div style="flex:1;cursor:pointer;" data-edit-work="${w.id}">
             <div style="color:var(--accent);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">${escapeHtml(w.id)}</div>
             <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(w.title)}</div>
             <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
@@ -886,7 +909,8 @@ function renderWorkMaster() {
     updateUnlinkedBadge();
   });
 
-  el.querySelectorAll('[data-del-alias]').forEach(b => b.onclick = () => {
+  el.querySelectorAll('[data-del-alias]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); // 親の data-edit-work 領域のクリックとして扱われ編集モーダルが開くのを防ぐ
     const [workId, alias] = b.dataset.delAlias.split('|||');
     if (!confirm(`別名「${alias}」の紐づけを解除しますか？（この表記の売上データは「未紐づけ」に戻ります）`)) return;
     const work = ledgerData.works.find(w => w.id === workId);
@@ -900,6 +924,10 @@ function renderWorkMaster() {
     markDirty();
     renderWorkMaster();
     updateUnlinkedBadge();
+  });
+
+  el.querySelectorAll('[data-edit-work]').forEach(area => area.onclick = () => {
+    openWorkDetail(area.dataset.editWork);
   });
 }
 
@@ -1229,6 +1257,73 @@ function initCustomerModalHandlers() {
 }
 initCustomerModalHandlers();
 
+let currentEditingWorkId = null;
+
+function openWorkDetail(id) {
+  const w = ledgerData.works.find(x => x.id === id);
+  if (!w) return;
+  currentEditingWorkId = id;
+
+  const brandSelect = document.getElementById('editWorkBrand');
+  const brandOptions = ledgerData.brands.map(b => `<option value="${b.id}">${escapeHtml(b.brandName)}</option>`).join('');
+  brandSelect.innerHTML = `<option value="">ブランドを選択</option>${brandOptions}`;
+
+  document.getElementById('editWorkId').value = w.id;
+  document.getElementById('editWorkTitle').value = w.title;
+  brandSelect.value = w.brandId || '';
+  document.getElementById('editWorkMemo').value = w.memo || '';
+  document.getElementById('workEditModal').classList.add('active');
+}
+
+function closeWorkModal() {
+  document.getElementById('workEditModal').classList.remove('active');
+  currentEditingWorkId = null;
+}
+
+function saveWorkModal() {
+  const w = ledgerData.works.find(x => x.id === currentEditingWorkId);
+  if (!w) { closeWorkModal(); return; }
+
+  const newId = document.getElementById('editWorkId').value.trim();
+  const newTitle = document.getElementById('editWorkTitle').value.trim();
+  const newBrandId = document.getElementById('editWorkBrand').value;
+  const newMemo = document.getElementById('editWorkMemo').value.trim();
+
+  if (!newId) { alert('作品IDを入力してください。'); return; }
+  if (!isValidWorkId(newId)) { alert('作品IDに使えるのは英数字・ハイフン（-）・アンダーバー（_）のみです。'); return; }
+  if (!newTitle) { alert('作品タイトルを入力してください。'); return; }
+
+  const oldId = w.id;
+  if (newId !== oldId) {
+    // IDを変更する場合、他の作品と重複しないか確認
+    if (ledgerData.works.some(x => x.id === newId && x !== w)) {
+      alert(`作品ID「${newId}」は既に使われています。別のIDを指定してください。`);
+      return;
+    }
+    // この作品IDを参照している売上データ(workId)を新しいIDに一括で追従させる
+    ledgerData.sales.forEach(s => { if (s.workId === oldId) s.workId = newId; });
+  }
+
+  w.id = newId;
+  w.title = newTitle;
+  w.brandId = newBrandId || null;
+  w.memo = newMemo;
+
+  markDirty();
+  closeWorkModal();
+  renderWorkMaster();
+  updateUnlinkedBadge();
+}
+
+function initWorkModalHandlers() {
+  document.getElementById('btnWorkModalCancel').onclick = closeWorkModal;
+  document.getElementById('btnWorkModalSave').onclick = saveWorkModal;
+  document.getElementById('workEditModal').onclick = (e) => {
+    if (e.target.id === 'workEditModal') closeWorkModal();
+  };
+}
+initWorkModalHandlers();
+
 function renderSalesList() {
   const el = document.getElementById('view-salesList');
 
@@ -1356,9 +1451,21 @@ function updateUnlinkedBadge() {
   }
 }
 
+// ヘッダーの実際の高さぶん、タブバーの固定位置(top)をずらす
+// （padding等の変更に強くするため、CSSで決め打ちせずJSで実測する）
+function syncTabbarStickyOffset() {
+  const header = document.querySelector('header.app-header');
+  const tabbar = document.getElementById('tabbar');
+  if (header && tabbar) {
+    tabbar.style.top = header.offsetHeight + 'px';
+  }
+}
+
 // 初期描画
 updateExportWarning();
 renderCurrentView('dashboard');
+syncTabbarStickyOffset();
+window.addEventListener('resize', syncTabbarStickyOffset);
 </script>
 
 </body>
