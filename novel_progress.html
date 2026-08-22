@@ -52,8 +52,14 @@ header {
   gap:14px;
 }
 .header-row .header-title-block { flex:1; min-width:0; }
+.header-title-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
 .header-row .new-project-btn-header {
   flex-shrink:0;
+  margin-left:2px;
   font-family:var(--font-ui);
   font-size:0.68rem;
   letter-spacing:0.03em;
@@ -109,7 +115,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .header-rotator {
   margin-top:14px;
   position:relative;
-  height:38px; /* ピン止めバナー（最も背が高いスライド）に合わせて固定し、切替時にheaderが伸縮しないようにする */
+  height:24px; /* 2026-08-22: 全スライド（凡例／ストレージ／ピン留め）が1行になったため高さを統一 */
   overflow:hidden;
 }
 .rotator-slide {
@@ -291,31 +297,39 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
 /* ---------- Priority pin banner ---------- */
 .priority-banner {
-  margin:18px 20px 0;
-  padding:14px 16px;
-  background:linear-gradient(135deg, var(--bg2), var(--bg3));
-  border:1px solid var(--accent);
-  border-radius:4px;
+  margin:0;
+  padding:0;
+  background:none;
+  border:none;
   display:none;
   align-items:center;
-  gap:12px;
+  gap:8px;
   cursor:pointer;
+  width:100%;
+  min-width:0;
 }
 .priority-banner.active { display:flex; }
-.priority-banner .pin-icon { font-size:1.1rem; color:var(--accent); }
-.priority-banner .pin-text { flex:1; }
-.priority-banner .pin-label {
+.priority-banner .pin-icon { font-size:1rem; color:var(--accent); flex-shrink:0; }
+.priority-banner .pin-label-badge {
   font-family:var(--font-ui);
-  font-size:0.62rem;
+  font-size:0.58rem;
   color:var(--accent);
-  letter-spacing:0.1em;
-  text-transform:uppercase;
+  letter-spacing:0.08em;
+  border:1px solid var(--accent);
+  border-radius:3px;
+  padding:2px 5px;
+  flex-shrink:0;
+  line-height:1.4;
 }
 .priority-banner .pin-title {
   font-family:var(--font-body);
-  font-size:1rem;
+  font-size:0.9rem;
   color:var(--text);
-  margin-top:2px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;
+  flex:1;
 }
 
 .btn {
@@ -662,64 +676,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
 #detailModalOverlay .modal > * { transition:opacity 0.12s ease; }
 #detailModalOverlay .modal.modal-anim-collapsed > * { opacity:0; }
 
-/* 2026-08-22新設：PCワイド画面（1024px以上）専用の左右二分割レイアウト。
-   左＝リール（今まで通りの表示）、右＝常時表示の「台紙」パネル（#pcSplitRight）。
-   モーダルは開いた時だけJSでこの台紙の中に移動され、台紙の中で中央表示される。
-   閉じたら元のDOM位置（#detailModalOverlayの直接の子）に戻す。
-   スマホ・タブレット幅（1024px未満）では従来通り縦積み・中央モーダル表示のまま。
-   2026-08-22修正：①.activeが無い状態でも常時display:flexを強制していたため、
-   閉じているはずのモーダルの中身が台紙に常時露出していた不具合を修正（.activeの状態を尊重）。
-   ②台紙内モーダルの中身が長い時、ページ全体がスクロールしリールごと動いてしまう不具合を修正
-   （台紙自体を独立スクロール領域にし、リール側は画面に固定されたまま動かないようにした）。 */
+/* 2026-08-22改修：作品詳細モーダル（#detailModalOverlay）は、PC分割台紙方式を廃止し、
+   画面幅を問わずヘッダーごと画面全面に重なるフルスクリーンオーバーレイに統一。
+   （旧: PC1024px以上でリール横に常設の「台紙」パネルへ埋め込む方式だったが、
+   モーダル占有エリアを最大化したいという要望により全面オーバーレイへ変更） */
 .pc-split-container { display:block; }
 .pc-split-right { display:none; }
-@media (min-width: 1024px) {
-  .pc-split-container {
-    display:flex;
-    align-items:flex-start;
-    gap:24px;
-    padding:0 20px;
-  }
-  .pc-split-left {
-    flex:1;
-    min-width:0;
-    position:sticky;
-    top:20px;
-  }
-  .pc-split-right {
-    flex:1;
-    display:flex;
-    align-items:flex-start;
-    justify-content:center;
-    background:var(--bg2);
-    border:1px solid var(--border);
-    border-radius:10px;
-    height:calc(100dvh - 300px);
-    padding:20px;
-    box-sizing:border-box;
-    overflow-y:auto;
-  }
-  /* 台紙の中に移動してきたモーダルオーバーレイは、画面全体を覆う必要がなくなるため
-     position:staticにして台紙の中の通常配置に戻す。台紙側（.pc-split-right）が
-     独立スクロール領域を担うため、このオーバーレイ自身はoverflow:visibleでよい。
-     display:noneはbase(.modal-overlay)の値を継続させ、.activeが付いた時だけ表示する。 */
-  .pc-split-right #detailModalOverlay {
-    position:static;
-    background:none;
-    inset:auto;
-    padding:0;
-    justify-content:center;
-    width:100%;
-    overflow-y:visible;
-  }
-  .pc-split-right #detailModalOverlay.active {
-    display:flex;
-  }
-  .pc-split-right #detailModalOverlay .modal {
-    margin:0;
-    width:100%;
-  }
-
+#detailModalOverlay.active {
+  padding:0;
+  align-items:stretch;
+  justify-content:stretch;
+}
+#detailModalOverlay .modal {
+  max-width:none;
+  width:100%;
+  height:100dvh;
+  margin-top:0;
+  border-radius:0;
+  display:flex;
+  flex-direction:column;
 }
 .modal-header {
   padding:18px 20px;
@@ -757,6 +732,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .modal-close:hover { color:var(--text); }
 .modal-body { padding:20px; }
+#detailModalOverlay .modal-header { flex-shrink:0; }
+#detailModalOverlay .modal-body { flex:1; min-height:0; overflow-y:auto; }
 
 .field { margin-bottom:16px; }
 .field label {
@@ -2010,10 +1987,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
   <div class="header-row">
     <button class="hamburger-btn" id="dashHamburgerBtn">☰</button>
     <div class="header-title-block">
-      <h1>Manu<span class="mark">script</span></h1>
+      <div class="header-title-row">
+        <h1>Manu<span class="mark">script</span></h1>
+        <button class="new-project-btn-header" id="newProjectBtn">＋ 新規作品</button>
+      </div>
       <div class="subtitle">novel progress dashboard</div>
     </div>
-    <button class="new-project-btn-header" id="newProjectBtn">＋ 新規作品</button>
     <div class="dropdown-menu" id="dashDropdown" style="left:0; right:auto;">
       <button type="button" class="dropdown-item" id="menuSelectModeBtn">☑ カードを選択</button>
       <button type="button" class="dropdown-item" id="menuSortBtn">🔀 並べ替え：<span id="menuSortCurrentLabel">優先順</span></button>
@@ -2054,10 +2033,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     <div class="rotator-slide" data-slide="pin" id="priorityBannerSlide">
       <div class="priority-banner" id="priorityBanner">
         <div class="pin-icon">📌</div>
-        <div class="pin-text">
-          <div class="pin-label">Now Writing</div>
-          <div class="pin-title" id="pinTitle">—</div>
-        </div>
+        <span class="pin-label-badge">NOW</span>
+        <div class="pin-title" id="pinTitle">—</div>
       </div>
     </div>
     <div class="rotator-dots" id="rotatorDots"></div>
@@ -4375,30 +4352,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   }
 
-  // ================= PC二分割レイアウト：詳細モーダルの台紙移動（2026-08-22新設） =================
-  // PCワイド画面（1024px以上）では、#detailModalOverlayをdashboardViewの直接の子から
-  // 右ペイン（#pcSplitRight）の中へ一時的に移動させ、「台紙の上にモーダルが乗る」見た目にする。
-  // 閉じる時・画面幅がスマホサイズに戻った時は、元の位置（#detailModalOriginalParent直後）へ戻す。
-  const detailModalOriginalParent = document.getElementById('detailModalOverlay').parentElement;
-  const detailModalOriginalNextSibling = document.getElementById('detailModalOverlay').nextElementSibling;
-  const PC_SPLIT_MIN_WIDTH = 1024;
-
-  function relocateDetailModalForViewport(){
-    const overlay = document.getElementById('detailModalOverlay');
-    const rightPane = document.getElementById('pcSplitRight');
-    const isPcWide = window.innerWidth >= PC_SPLIT_MIN_WIDTH;
-    if(isPcWide && overlay.parentElement !== rightPane){
-      rightPane.appendChild(overlay);
-    } else if(!isPcWide && overlay.parentElement !== detailModalOriginalParent){
-      if(detailModalOriginalNextSibling){
-        detailModalOriginalParent.insertBefore(overlay, detailModalOriginalNextSibling);
-      } else {
-        detailModalOriginalParent.appendChild(overlay);
-      }
-    }
-  }
-  window.addEventListener('resize', relocateDetailModalForViewport);
-  relocateDetailModalForViewport();
+  // 2026-08-22改修：詳細モーダルはPC分割台紙方式を廃止し、フルスクリーンオーバーレイに統一。
+  // （台紙へのDOM移動ロジックは不要になったため削除）
 
   function closeDetail(){
     playDetailModalCloseAnimation(() => {
