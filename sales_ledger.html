@@ -215,6 +215,63 @@ footer.app-footer {
   font-size:0.72rem;
   font-family:var(--font-ui);
 }
+
+/* ===== 顧客編集モーダル ===== */
+/* body直下に配置（ビューのdiv内にネストしない）。z-index問題を避けるため。 */
+.modal-overlay {
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+  z-index:100;
+  align-items:flex-end;
+  justify-content:center;
+}
+.modal-overlay.active { display:flex; }
+.modal-sheet {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  width:100%;
+  max-width:480px;
+  max-height:85vh;
+  overflow-y:auto;
+  padding:20px;
+}
+@media (min-width:600px) {
+  .modal-overlay { align-items:center; }
+  .modal-sheet { border-radius:16px; margin:20px; }
+}
+.modal-title {
+  font-family:var(--font-ui);
+  color:var(--accent);
+  font-size:1.05rem;
+  margin-bottom:14px;
+}
+.modal-field-label {
+  color:var(--text2);
+  font-size:0.78rem;
+  margin-bottom:6px;
+  margin-top:14px;
+}
+.modal-field-label:first-of-type { margin-top:0; }
+.modal-sales-history {
+  background:var(--bg3);
+  border-radius:8px;
+  padding:12px;
+  color:var(--text2);
+  font-size:0.78rem;
+  line-height:1.7;
+  max-height:160px;
+  overflow-y:auto;
+  white-space:pre-wrap;
+}
+.modal-actions {
+  display:flex;
+  gap:10px;
+  margin-top:18px;
+}
+.modal-actions .btn { flex:1; }
 </style>
 </head>
 <body>
@@ -248,6 +305,22 @@ footer.app-footer {
 </main>
 
 <footer class="app-footer">Ledger / noveltools</footer>
+
+<div class="modal-overlay" id="customerEditModal">
+  <div class="modal-sheet">
+    <div class="modal-title">顧客情報の編集</div>
+    <div class="modal-field-label">表示名</div>
+    <input type="text" id="editCustomerName" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+    <div class="modal-field-label">メモ</div>
+    <textarea id="editCustomerMemo" rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;resize:vertical;"></textarea>
+    <div class="modal-field-label">購入履歴</div>
+    <div class="modal-sales-history" id="editCustomerSalesHistory"></div>
+    <div class="modal-actions">
+      <button class="btn" id="btnCustomerModalCancel">キャンセル</button>
+      <button class="btn primary" id="btnCustomerModalSave">保存</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* =========================================================
@@ -1105,36 +1178,56 @@ function addCustomerDirect() {
   renderCustomerList();
 }
 
+let currentEditingCustomerId = null;
+
 function openCustomerDetail(id) {
   const c = ledgerData.customers.find(x => x.id === id);
   if (!c) return;
+  currentEditingCustomerId = id;
+
   const sales = ledgerData.sales.filter(s => s.customerId === id);
   const salesListText = sales.map(s => {
     const work = ledgerData.works.find(w => w.id === s.workId);
     return `・${formatNoteDatetime(s.datetime)} ${work ? work.title : s.contentNameRaw} ¥${s.amount}`;
   }).join('\n');
 
-  const newName = prompt(
-    `${c.displayName} の購入履歴：\n${salesListText || '（購入履歴なし）'}\n\n顧客の表示名を編集（そのままEnterで変更なし）：`,
-    c.displayName
-  );
-  if (newName === null) return; // キャンセル時は名前もメモも変更しない
-  const trimmedName = newName.trim();
-  if (!trimmedName) {
-    alert('表示名を空にはできません。変更を中止しました。');
+  document.getElementById('editCustomerName').value = c.displayName;
+  document.getElementById('editCustomerMemo').value = c.memo || '';
+  document.getElementById('editCustomerSalesHistory').textContent = salesListText || '（購入履歴なし）';
+  document.getElementById('customerEditModal').classList.add('active');
+}
+
+function closeCustomerModal() {
+  document.getElementById('customerEditModal').classList.remove('active');
+  currentEditingCustomerId = null;
+}
+
+function saveCustomerModal() {
+  const c = ledgerData.customers.find(x => x.id === currentEditingCustomerId);
+  if (!c) { closeCustomerModal(); return; }
+
+  const newName = document.getElementById('editCustomerName').value.trim();
+  if (!newName) {
+    alert('表示名を空にはできません。');
     return;
   }
-  c.displayName = trimmedName;
-
-  const newMemo = prompt(
-    `メモを編集（そのままEnterで変更なし）：`,
-    c.memo || ''
-  );
-  if (newMemo !== null) c.memo = newMemo.trim();
+  c.displayName = newName;
+  c.memo = document.getElementById('editCustomerMemo').value.trim();
 
   markDirty();
+  closeCustomerModal();
   renderCustomerList();
 }
+
+// モーダルのボタンは画面全体で一度だけ配線する（顧客一覧の再描画のたびに重複登録しないよう、DOMContentLoaded相当のタイミングで一度だけ実行）
+function initCustomerModalHandlers() {
+  document.getElementById('btnCustomerModalCancel').onclick = closeCustomerModal;
+  document.getElementById('btnCustomerModalSave').onclick = saveCustomerModal;
+  document.getElementById('customerEditModal').onclick = (e) => {
+    if (e.target.id === 'customerEditModal') closeCustomerModal(); // オーバーレイ部分をタップしたら閉じる
+  };
+}
+initCustomerModalHandlers();
 
 function renderSalesList() {
   const el = document.getElementById('view-salesList');
