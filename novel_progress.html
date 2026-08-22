@@ -55,7 +55,7 @@ header {
 .header-title-row {
   display:flex;
   align-items:center;
-  gap:14px;
+  gap:30px;
 }
 .header-row .new-project-btn-header {
   flex-shrink:0;
@@ -677,9 +677,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
 #detailModalOverlay .modal.modal-anim-collapsed > * { opacity:0; }
 
 /* 2026-08-22改修：作品詳細モーダル（#detailModalOverlay）は、PC分割台紙方式を廃止し、
-   画面幅を問わずヘッダーごと画面全面に重なるフルスクリーンオーバーレイに統一。
+   ヘッダーごと画面全面に重なるフルスクリーンオーバーレイに統一。
    （旧: PC1024px以上でリール横に常設の「台紙」パネルへ埋め込む方式だったが、
-   モーダル占有エリアを最大化したいという要望により全面オーバーレイへ変更） */
+   モーダル占有エリアを最大化したいという要望により全面オーバーレイへ変更）
+   2026-08-22再改修：PC幅（1024px以上）ではモーダルを画面右半分に寄せ、
+   ヘッダーも右半分だけオーバーライドする形に変更（左側はリールが常に見える擬似2ペイン）。
+   スマホ・タブレット幅（1024px未満）は引き続き全面フルスクリーン。 */
 .pc-split-container { display:block; }
 .pc-split-right { display:none; }
 #detailModalOverlay.active {
@@ -695,6 +698,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
   border-radius:0;
   display:flex;
   flex-direction:column;
+}
+@media (min-width: 1024px) {
+  #detailModalOverlay.active {
+    justify-content:flex-end;
+  }
+  #detailModalOverlay .modal {
+    width:50vw;
+    border-left:1px solid var(--border);
+  }
+  /* リールを画面左寄せに（元は左右中央寄せだった） */
+  .reel-card {
+    margin-left:0;
+    margin-right:auto;
+  }
 }
 .modal-header {
   padding:18px 20px;
