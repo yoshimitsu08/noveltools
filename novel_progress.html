@@ -539,7 +539,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .reel-card {
   position:absolute;
   left:16px; right:16px;
-  max-width:440px; /* 2026-08-21追加：PCワイド画面での横長化防止（画像約5枚分を上限）。左右中央寄せのためmargin:autoも付与 */
+  max-width:520px; /* 2026-08-21追加：PCワイド画面での横長化防止（画像約5枚分を上限）。左右中央寄せのためmargin:autoも付与 */
+                    /* 2026-08-23変更：サムネイルを正方形→16:9化(+87px)した分だけ440px→520pxへ拡大 */
   margin-left:auto; margin-right:auto;
   height:112px;
   margin-top:-56px;
@@ -564,7 +565,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .reel-card.pinned { border-color:var(--accent); }
 .reel-card .rc-cover {
-  width:112px; flex-shrink:0;
+  width:199px; flex-shrink:0; /* 2026-08-23変更：正方形(112x112)から表紙本来の比率16:9(112px高基準)へ */
   height:100%;
   background:var(--bg3);
   display:flex; align-items:center; justify-content:center;
@@ -728,7 +729,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   .reel-card {
     margin-left:0;
     margin-right:auto;
-    left:161px; /* 16px(元の左マージン) + 145px(440pxの約1/3) */
+    left:189px; /* 16px(元の左マージン) + 173px(520pxの約1/3) 2026-08-23: カード幅440→520px化に伴い再計算 */
   }
 }
 .modal-header {
