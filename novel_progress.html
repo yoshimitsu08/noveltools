@@ -6391,12 +6391,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(e.target.id === 'githubSyncModalOverlay') document.getElementById('githubSyncModalOverlay').classList.remove('active');
   });
 
+  let ghSyncInProgress = false;
+
   document.getElementById('githubSyncPushBtn').onclick = async () => {
+    if(ghSyncInProgress) return; // 処理中の連打を無視
+    ghSyncInProgress = true;
     const p = projects.find(x => x.id === currentGithubSyncProjectId);
-    if(!p) return;
+    if(!p){ ghSyncInProgress = false; return; }
     const cfg = ghLoadConfig();
     const btn = document.getElementById('githubSyncPushBtn');
+    const pullBtn = document.getElementById('githubSyncPullBtn');
     btn.disabled = true;
+    pullBtn.disabled = true;
     btn.textContent = '保存中…';
     try {
       const expectedSha = p._githubSync ? p._githubSync.lastSyncedSha : undefined;
@@ -6413,16 +6419,22 @@ h1 .mark { color:var(--accent); font-style:italic; }
       alert(`保存に失敗しました：${err.message}`);
     } finally {
       btn.disabled = false;
+      pullBtn.disabled = false;
       btn.textContent = '☁️⬆️ GitHubに保存';
+      ghSyncInProgress = false;
     }
   };
 
   document.getElementById('githubSyncPullBtn').onclick = async () => {
+    if(ghSyncInProgress) return; // 処理中の連打を無視
+    ghSyncInProgress = true;
     const p = projects.find(x => x.id === currentGithubSyncProjectId);
-    if(!p) return;
+    if(!p){ ghSyncInProgress = false; return; }
     const cfg = ghLoadConfig();
     const btn = document.getElementById('githubSyncPullBtn');
+    const pushBtn = document.getElementById('githubSyncPushBtn');
     btn.disabled = true;
+    pushBtn.disabled = true;
     btn.textContent = '取得中…';
     try {
       const remote = await ghFetchRemote(cfg, p);
@@ -6449,7 +6461,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
       alert(`取得に失敗しました：${err.message}`);
     } finally {
       btn.disabled = false;
+      pushBtn.disabled = false;
       btn.textContent = '☁️⬇️ GitHubから取得';
+      ghSyncInProgress = false;
     }
   };
 
