@@ -3586,6 +3586,26 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const needsRename = existingFilename && existingFilename !== idealFilename;
     const targetFilename = idealFilename;
 
+    // PUTに使うSHAの決定：
+    //   ・リネーム時：targetFilenameは新規ファイルなので不要
+    //   ・expectedSha（アプリが最後に把握したSHA）があればそれを使う → 実際のリモートと食い違っていれば
+    //     GitHub側が409を返してくれるので、これが「他端末で更新されている」の正しい検知経路になる
+    //   ・expectedShaが無い（一度も同期していない）のに、実は既にファイルが存在するケースでは、
+    //     412ではなく422（sha未指定エラー）になってしまうため、その場合だけ実際のSHAを取得して補う
+    //     （＝一度も同期していない状態からの「先には自分しか触っていないはず」の初回保存として扱う）
+    let shaToUse = null;
+    if(!needsRename){
+      if(expectedSha){
+        shaToUse = expectedSha;
+      } else if(existingFilename){
+        const checkRes = await ghApiRequest(cfg, targetFilename, 'GET');
+        if(checkRes.ok){
+          const checkJson = await checkRes.json();
+          shaToUse = checkJson.sha;
+        }
+      }
+    }
+
     const exportPayload = {
       exportedFrom: 'Manuscript',
       exportVersion: 1,
@@ -3601,9 +3621,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       message: `Manuscript sync: ${p.title || '無題'} (${new Date().toISOString()})`,
       content: contentB64
     };
-    // リネームが発生しない通常更新の場合のみ、SHA競合チェックを効かせる。
-    // リネーム時（新ファイル名でのPUT）は対象ファイルが存在しないため、SHAは付けない。
-    if(expectedSha && !needsRename) body.sha = expectedSha;
+    if(shaToUse) body.sha = shaToUse;
 
     const res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
     if(res.status === 409){
