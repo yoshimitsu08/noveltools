@@ -427,6 +427,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
   font-weight:bold;
 }
 .btn.primary:hover { opacity:0.9; background:var(--accent); }
+/* 2026-08-23新設：非活性ボタンの共通スタイル（GitHub同期モーダルの確認中安全装置などで使用） */
+.btn:disabled {
+  opacity:0.45;
+  cursor:not-allowed;
+  pointer-events:none;
+}
 
 /* ---------- Grid ---------- */
 .grid {
@@ -6455,7 +6461,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('githubSyncModalOverlay').classList.add('active');
 
     const statusEl = document.getElementById('githubSyncStatusText');
+    const pushBtn = document.getElementById('githubSyncPushBtn');
+    const pullBtn = document.getElementById('githubSyncPullBtn');
     statusEl.textContent = '確認中…';
+    // 2026-08-23新設：状態確認が完了するまで「保存」「取得」ボタンを無効化する安全装置。
+    // 確認中に状態を見ずに押してしまい、意図しない上書き判断をするのを防ぐ。
+    pushBtn.disabled = true;
+    pullBtn.disabled = true;
 
     const cfg = ghLoadConfig();
     const localUnsynced = ghHasUnsyncedLocalChanges(p);
@@ -6488,6 +6500,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
       statusEl.innerHTML = lines.join('<br>');
     } catch(err){
       statusEl.textContent = `状態の確認に失敗しました：${err.message}`;
+    } finally {
+      // 確認が成功・失敗いずれで終わっても、ボタン操作自体は復帰させる
+      // （失敗時に「保存」「取得」が永久に押せなくなるのを防ぐ）
+      pushBtn.disabled = false;
+      pullBtn.disabled = false;
     }
   }
 
