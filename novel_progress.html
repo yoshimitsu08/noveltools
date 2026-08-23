@@ -809,7 +809,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   .reel-card {
     margin-left:0;
     margin-right:auto;
-    left:189px; /* 16px(元の左マージン) + 173px(520pxの約1/3) 2026-08-23: カード幅440→520px化に伴い再計算 */
+    left:95px; /* 2026-08-23再変更：189px→約半分に短縮（画面左端〜カード左端の距離を半減） */
   }
 }
 .modal-header {
@@ -4058,7 +4058,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       return `
       <div class="reel-card idea-book-card" data-id="${p.id}">
         <div class="rc-cover" data-role="cover">
-          <img src="${p.cover}" alt="">
+          <img src="${p.cover}" alt="" style="object-position:100% 50%;">
         </div>
         <div class="rc-body">
           <div class="rc-title">${escapeHTML(p.title)}</div>
@@ -5217,6 +5217,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
       modal.style.transform = '';
       modal.style.transformOrigin = '';
       modal.classList.remove('modal-anim-collapsed');
+      // 2026-08-23修正：このパスでもauto-resize-textareaの高さを実寸確定後に再計算する
+      requestAnimationFrame(() => {
+        modal.querySelectorAll('.auto-resize-textarea').forEach(ta => {
+          ta.dispatchEvent(new Event('input'));
+        });
+      });
       return;
     }
 
@@ -5247,6 +5253,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
           modal.classList.remove('modal-anim-collapsed'); // ここで中身のopacityが一気に戻る
           modal.style.transition = '';
           modal.style.transform = '';
+          // 2026-08-23修正：アニメーション中（モーダルが実寸で表示される前）にauto-resize-textareaの
+          // 高さ計算が走ると、clientWidthが正しく取れず異常に大きい高さになるバグの対策。
+          // 実寸が確定したこのタイミングで、モーダル内のauto-resize-textareaを改めて再計算する。
+          modal.querySelectorAll('.auto-resize-textarea').forEach(ta => {
+            ta.dispatchEvent(new Event('input'));
+          });
         }, DETAIL_MODAL_ANIM_MS);
       });
     });
