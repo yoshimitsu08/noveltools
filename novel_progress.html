@@ -6341,6 +6341,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(!p) return;
 
     document.getElementById('detailDropdown').classList.remove('active');
+    document.getElementById('detailModalOverlay').classList.remove('active');
     document.getElementById('githubSyncModalOverlay').classList.add('active');
 
     const statusEl = document.getElementById('githubSyncStatusText');
