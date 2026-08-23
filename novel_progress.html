@@ -665,13 +665,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
   max-width:calc(100% - 12px);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-/* 2026-08-23新設：作品ID表示（デバッグ・特定用途向け、控えめに右下へ） */
-.reel-card .rc-id-badge {
-  position:absolute; bottom:6px; right:6px;
-  font-family:var(--font-ui); font-size:0.5rem;
-  background:rgba(10,9,7,0.55); color:var(--text3);
-  padding:1px 4px; border-radius:3px;
-  letter-spacing:0.02em;
+/* 2026-08-23再変更：作品ID表示は画像上のバッジから撤去し、rc-body内メタ情報の下に3行目として表示する方式に変更（下記.rc-id-lineを参照） */
+.reel-card .rc-id-line {
+  font-family:var(--font-ui);
+  font-size:0.6rem;
+  color:var(--text3);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .reel-card .rc-body {
   flex:1; min-width:0;
@@ -685,18 +684,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
   color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.reel-card .rc-status-line {
-  display:flex; align-items:center; gap:6px;
-}
-.reel-card .rc-status-heading {
-  font-family:var(--font-ui); font-size:0.55rem;
-  letter-spacing:0.03em; flex-shrink:0;
-}
-.reel-card .rc-progress-track {
-  flex:1; height:3px; border-radius:2px; overflow:hidden;
-  background:var(--bg3);
-}
-.reel-card .rc-progress-fill { height:100%; background:var(--accent); }
 .reel-card .rc-meta {
   font-family:var(--font-ui);
   font-size:0.6rem;
@@ -710,8 +697,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .reel-card.selected .rc-cover {
   cursor:pointer;
 }
+/* 2026-08-23再変更：「開く」表示を進捗ステータス表示に変更（data-phase-label属性の値をそのまま表示） */
 .reel-card.selected .rc-cover::after {
-  content:'開く';
+  content:attr(data-phase-label);
   position:absolute; right:6px; bottom:6px;
   font-family:var(--font-ui); font-size:0.55rem;
   color:var(--bg); background:var(--accent);
@@ -4710,8 +4698,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
       : `<span class="no-cover-glyph">✒</span>`;
     const total = chapterTotal(p);
     const done = chapterDoneCount(p);
-    const pct = Math.round((done/total)*100);
-    const phase = computePhase(p);
 
     const cardClasses = ['reel-card'];
     if(p.pinned) cardClasses.push('pinned');
@@ -4720,22 +4706,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     return `
     <div class="${cardClasses.join(' ')}" data-id="${p.id}">
-      <div class="rc-cover" data-role="cover">
+      <div class="rc-cover" data-role="cover" data-phase-label="${escapeHTML(phaseLabel(p))}">
         ${p.pinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="rc-editor-badge">${escapeHTML(p.editor)}</div>` : ''}
-        <div class="rc-id-badge">${escapeHTML(p.id.slice(0, 7))}…</div>
         ${coverHTML}
       </div>
       <div class="rc-body">
         <div class="rc-title">${escapeHTML(p.title || '無題')}</div>
-        <div class="rc-status-line">
-          <span class="rc-status-heading status-heading ${statusClass(phase)}">${phaseLabel(p)}</span>
-          <div class="rc-progress-track"><div class="rc-progress-fill" style="width:${pct}%"></div></div>
-        </div>
         <div class="rc-meta">
           <span class="num">${(p.wordcount||0).toLocaleString()}字</span>
           <span>${done}/${total}章</span>
         </div>
+        <div class="rc-id-line">${escapeHTML(p.id.slice(0, 7))}…</div>
       </div>
       <div class="rc-check"></div>
     </div>`;
