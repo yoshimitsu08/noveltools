@@ -341,8 +341,24 @@ footer.app-footer {
     <div class="modal-field-label">メモ</div>
     <textarea id="editWorkMemo" rows="3" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;resize:vertical;"></textarea>
     <div class="modal-actions">
+      <button class="btn danger" id="btnWorkModalDelete" style="flex:0 0 auto;margin-right:auto;">削除</button>
       <button class="btn" id="btnWorkModalCancel">キャンセル</button>
       <button class="btn primary" id="btnWorkModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="brandEditModal">
+  <div class="modal-sheet">
+    <div class="modal-title">ブランド情報の編集</div>
+    <div class="modal-field-label">ブランド名</div>
+    <input type="text" id="editBrandName" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+    <div class="modal-field-label">note表示名</div>
+    <input type="text" id="editBrandNoteName" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
+    <div class="modal-actions">
+      <button class="btn danger" id="btnBrandModalDelete" style="flex:0 0 auto;margin-right:auto;">削除</button>
+      <button class="btn" id="btnBrandModalCancel">キャンセル</button>
+      <button class="btn primary" id="btnBrandModalSave">保存</button>
     </div>
   </div>
 </div>
@@ -783,24 +799,21 @@ function renderWorkMaster() {
       const brand = ledgerData.brands.find(b => b.id === w.brandId);
       const aliases = w.aliases || [];
       return `
-        <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div style="flex:1;cursor:pointer;" data-edit-work="${w.id}">
-            <div style="color:var(--accent);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">${escapeHtml(w.id)}</div>
-            <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(w.title)}</div>
-            <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
-            ${w.memo ? `<div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">${escapeHtml(w.memo)}</div>` : ''}
-            ${aliases.length > 0 ? `
-              <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
-                <div style="color:var(--text3);font-size:0.72rem;margin-bottom:4px;">別名（表記ゆれ）</div>
-                ${aliases.map(a => `
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:3px;">
-                    <span style="color:var(--text2);font-size:0.76rem;">${escapeHtml(a)}</span>
-                    <button data-del-alias="${w.id}|||${escapeHtml(a)}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.7rem;text-decoration:underline;flex-shrink:0;">解除</button>
-                  </div>
-                `).join('')}
-              </div>` : ''}
-          </div>
-          <button class="btn danger" data-del-work="${w.id}" style="font-size:0.72rem;padding:6px 10px;">削除</button>
+        <div class="card" style="cursor:pointer;" data-edit-work="${w.id}">
+          <div style="color:var(--accent);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">${escapeHtml(w.id)}</div>
+          <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(w.title)}</div>
+          <div style="color:var(--text2);font-size:0.78rem;margin-top:4px;">${brand ? escapeHtml(brand.brandName) : '（ブランド未設定）'}</div>
+          ${w.memo ? `<div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">${escapeHtml(w.memo)}</div>` : ''}
+          ${aliases.length > 0 ? `
+            <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+              <div style="color:var(--text3);font-size:0.72rem;margin-bottom:4px;">別名（表記ゆれ）</div>
+              ${aliases.map(a => `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:3px;">
+                  <span style="color:var(--text2);font-size:0.76rem;">${escapeHtml(a)}</span>
+                  <button data-del-alias="${w.id}|||${escapeHtml(a)}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.7rem;text-decoration:underline;flex-shrink:0;">解除</button>
+                </div>
+              `).join('')}
+            </div>` : ''}
         </div>`;
     }).join('');
   }
@@ -810,12 +823,9 @@ function renderWorkMaster() {
     brandsHtml = `<div class="empty-state">まだブランドが登録されていません。先にブランドを登録してください。</div>`;
   } else {
     brandsHtml = ledgerData.brands.map(b => `
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-family:var(--font-ui);">${escapeHtml(b.brandName)}</div>
-          <div style="color:var(--text3);font-size:0.75rem;margin-top:2px;">note表示名: ${escapeHtml(b.noteName)}</div>
-        </div>
-        <button class="btn danger" data-del-brand="${b.id}" style="font-size:0.72rem;padding:6px 10px;">削除</button>
+      <div class="card" style="cursor:pointer;" data-edit-brand="${b.id}">
+        <div style="font-family:var(--font-ui);">${escapeHtml(b.brandName)}</div>
+        <div style="color:var(--text3);font-size:0.75rem;margin-top:2px;">note表示名: ${escapeHtml(b.noteName)}</div>
       </div>`).join('');
   }
 
@@ -904,23 +914,8 @@ function renderWorkMaster() {
     if (titleInput) titleInput.focus();
   };
 
-  el.querySelectorAll('[data-del-brand]').forEach(b => b.onclick = () => {
-    if (!confirm('このブランドを削除しますか？（紐づく作品のブランド設定は解除されます）')) return;
-    const id = b.dataset.delBrand;
-    ledgerData.brands = ledgerData.brands.filter(x => x.id !== id);
-    ledgerData.works.forEach(w => { if (w.brandId === id) w.brandId = null; });
-    markDirty();
-    renderWorkMaster();
-  });
-
-  el.querySelectorAll('[data-del-work]').forEach(b => b.onclick = () => {
-    if (!confirm('この作品を削除しますか？（紐づく売上データは「未紐づけ」に戻ります）')) return;
-    const id = b.dataset.delWork;
-    ledgerData.works = ledgerData.works.filter(x => x.id !== id);
-    ledgerData.sales.forEach(s => { if (s.workId === id) s.workId = null; });
-    markDirty();
-    renderWorkMaster();
-    updateUnlinkedBadge();
+  el.querySelectorAll('[data-edit-brand]').forEach(card => card.onclick = () => {
+    openBrandDetail(card.dataset.editBrand);
   });
 
   el.querySelectorAll('[data-del-alias]').forEach(b => b.onclick = (e) => {
@@ -1376,14 +1371,82 @@ function saveWorkModal() {
   updateUnlinkedBadge();
 }
 
+function deleteWorkFromModal() {
+  const w = ledgerData.works.find(x => x.id === currentEditingWorkId);
+  if (!w) { closeWorkModal(); return; }
+  if (!confirm('この作品を削除しますか？（紐づく売上データは「未紐づけ」に戻ります）')) return;
+  ledgerData.works = ledgerData.works.filter(x => x.id !== w.id);
+  ledgerData.sales.forEach(s => { if (s.workId === w.id) s.workId = null; });
+  markDirty();
+  closeWorkModal();
+  renderWorkMaster();
+  updateUnlinkedBadge();
+}
+
 function initWorkModalHandlers() {
   document.getElementById('btnWorkModalCancel').onclick = closeWorkModal;
   document.getElementById('btnWorkModalSave').onclick = saveWorkModal;
+  document.getElementById('btnWorkModalDelete').onclick = deleteWorkFromModal;
   document.getElementById('workEditModal').onclick = (e) => {
     if (e.target.id === 'workEditModal') closeWorkModal();
   };
 }
 initWorkModalHandlers();
+
+let currentEditingBrandId = null;
+
+function openBrandDetail(id) {
+  const b = ledgerData.brands.find(x => x.id === id);
+  if (!b) return;
+  currentEditingBrandId = id;
+  document.getElementById('editBrandName').value = b.brandName;
+  document.getElementById('editBrandNoteName').value = b.noteName;
+  document.getElementById('brandEditModal').classList.add('active');
+}
+
+function closeBrandModal() {
+  document.getElementById('brandEditModal').classList.remove('active');
+  currentEditingBrandId = null;
+}
+
+function saveBrandModal() {
+  const b = ledgerData.brands.find(x => x.id === currentEditingBrandId);
+  if (!b) { closeBrandModal(); return; }
+
+  const newBrandName = document.getElementById('editBrandName').value.trim();
+  const newNoteName = document.getElementById('editBrandNoteName').value.trim();
+
+  if (!newBrandName) { alert('ブランド名を入力してください。'); return; }
+  if (!newNoteName) { alert('note表示名を入力してください。'); return; }
+
+  b.brandName = newBrandName;
+  b.noteName = newNoteName;
+
+  markDirty();
+  closeBrandModal();
+  renderWorkMaster();
+}
+
+function deleteBrandFromModal() {
+  const b = ledgerData.brands.find(x => x.id === currentEditingBrandId);
+  if (!b) { closeBrandModal(); return; }
+  if (!confirm('このブランドを削除しますか？（紐づく作品のブランド設定は解除されます）')) return;
+  ledgerData.brands = ledgerData.brands.filter(x => x.id !== b.id);
+  ledgerData.works.forEach(w => { if (w.brandId === b.id) w.brandId = null; });
+  markDirty();
+  closeBrandModal();
+  renderWorkMaster();
+}
+
+function initBrandModalHandlers() {
+  document.getElementById('btnBrandModalCancel').onclick = closeBrandModal;
+  document.getElementById('btnBrandModalSave').onclick = saveBrandModal;
+  document.getElementById('btnBrandModalDelete').onclick = deleteBrandFromModal;
+  document.getElementById('brandEditModal').onclick = (e) => {
+    if (e.target.id === 'brandEditModal') closeBrandModal();
+  };
+}
+initBrandModalHandlers();
 
 function renderSalesList() {
   const el = document.getElementById('view-salesList');
