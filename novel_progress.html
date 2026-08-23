@@ -640,6 +640,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .reel-card.pinned { border-color:var(--accent); }
 .reel-card.idea-book-card { border-color:#9b8ac4; } /* 2026-08-23新設：ネタ帳カードの差別化（掛けんだ紫） */
+.reel-card.help-guide-card { border-color:#7ec4d8; } /* 2026-08-23新設：使い方ガイドカードの差別化（青） */
 .reel-card .rc-cover {
   width:160px; flex-shrink:0; /* 2026-08-23再変更：199px→160pxに縮小し、タイトル領域を確保（object-positionでのトリミング位置調整機能とセット） */
   height:100%;
@@ -938,6 +939,50 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .idea-tab-page { display:none; }
 .idea-tab-page.active { display:block; }
+
+/* 2026-08-23新設：使い方ガイドのステップカード */
+.help-step-card {
+  display:flex;
+  gap:14px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:14px 16px;
+  margin-bottom:12px;
+}
+.help-step-number {
+  flex-shrink:0;
+  width:28px; height:28px;
+  border-radius:50%;
+  background:#7ec4d8;
+  color:var(--bg);
+  font-family:var(--font-ui);
+  font-size:0.8rem;
+  display:flex; align-items:center; justify-content:center;
+}
+.help-step-body { flex:1; min-width:0; }
+.help-step-title {
+  font-family:var(--font-body);
+  font-size:0.95rem;
+  color:var(--text);
+  margin-bottom:4px;
+  display:flex; align-items:center; gap:6px;
+}
+.help-step-badge {
+  font-family:var(--font-ui);
+  font-size:0.55rem;
+  color:var(--text3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:1px 5px;
+  letter-spacing:0.03em;
+}
+.help-step-desc {
+  font-family:var(--font-ui);
+  font-size:0.72rem;
+  color:var(--text2);
+  line-height:1.6;
+}
 .idea-note-item {
   background:var(--bg2);
   border:1px solid var(--border);
@@ -2827,6 +2872,112 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 </div>
 
+<!-- ============ Help Guide Modal (使い方ガイド) 2026-08-23新設 ============ -->
+<div class="modal-overlay" id="helpGuideModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>使い方ガイド</h2>
+      <button class="modal-close" id="helpGuideModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="idea-tab-nav">
+        <button type="button" class="idea-tab-btn active" data-helptab="manual">自力で書くフロー</button>
+        <button type="button" class="idea-tab-btn" data-helptab="ai">AIと連携するフロー</button>
+      </div>
+
+      <div class="idea-tab-page active" id="helpTabManual">
+        <div class="help-step-card">
+          <div class="help-step-number">1</div>
+          <div class="help-step-body">
+            <div class="help-step-title">「＋新規作品」で作品を作る</div>
+            <div class="help-step-desc">ダッシュボード右上の「＋新規作品」からタイトルを入力すると、作品カードが1枚作られます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">2</div>
+          <div class="help-step-body">
+            <div class="help-step-title">設定とプロットを入力する</div>
+            <div class="help-step-desc">作品カードを開き「設定・プロット」画面で、世界観・登場人物・章ごとの出来事などを入力します。章を増やしたい時は画面下部の「＋ 章を追加」から追加できます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">3</div>
+          <div class="help-step-body">
+            <div class="help-step-title">本文を執筆する</div>
+            <div class="help-step-desc">「本文執筆」画面（Sentence Selector）で、文章をカード形式で書き足していきます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">4</div>
+          <div class="help-step-body">
+            <div class="help-step-title">推敲する</div>
+            <div class="help-step-desc">Sentence Selectorで書いた本文を見直し、より良い言い回しに練り直して完成させます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="idea-tab-page" id="helpTabAi">
+        <div class="help-step-card">
+          <div class="help-step-number">1</div>
+          <div class="help-step-body">
+            <div class="help-step-title">「＋新規作品」で作品を作る</div>
+            <div class="help-step-desc">ダッシュボード右上の「＋新規作品」からタイトルを入力すると、作品カードが1枚作られます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">2</div>
+          <div class="help-step-body">
+            <div class="help-step-title">ネタ帳でラフメモを作成→作品カードへ送る<span class="help-step-badge">近日実装予定</span></div>
+            <div class="help-step-desc">ネタ帳に書き溜めたアイデアを、作品カードのラフメモ欄へ直接送れるようになる予定です。現在は手動でコピー＆ペーストしてください。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">3</div>
+          <div class="help-step-body">
+            <div class="help-step-title">AI連携「ラフメモから設定とプロットを作成」</div>
+            <div class="help-step-desc">作品カードのメニューにある「AI Hub」から、ラフメモをもとに設定・プロットの叩き台をAIに作らせます。生成結果をコピーしてAIチャットに渡し、返ってきた内容を貼り付けて反映します。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">4</div>
+          <div class="help-step-body">
+            <div class="help-step-title">AI連携「設定とプロットの品質チェック」</div>
+            <div class="help-step-desc">AI Hubから、書いた設定・プロットに矛盾や粗がないかAIにチェックさせます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">5</div>
+          <div class="help-step-body">
+            <div class="help-step-title">AI連携「設定とプロットから本文を執筆」</div>
+            <div class="help-step-desc">AI Hubから、確定した設定・プロットをもとに本文の下書きをAIに書かせます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">6</div>
+          <div class="help-step-body">
+            <div class="help-step-title">AI連携「本文の推敲」</div>
+            <div class="help-step-desc">AI Hubから、書き上がった本文をAIに推敲させます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">7</div>
+          <div class="help-step-body">
+            <div class="help-step-title">推敲する</div>
+            <div class="help-step-desc">AIの推敲結果をSentence Selectorに取り込み、自分の目で最終確認しながら仕上げます。</div>
+          </div>
+        </div>
+        <div class="help-step-card">
+          <div class="help-step-number">8</div>
+          <div class="help-step-body">
+            <div class="help-step-title">紹介文や画像を生成する</div>
+            <div class="help-step-desc">AI Hubの「紹介文作成」で読者向けのあらすじを、作品詳細の「画像プロンプト」欄でカバー画像用のプロンプトをAI向けに用意できます。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Bookmark Color Modal ============ -->
 <div class="modal-overlay" id="bookmarkColorModalOverlay">
   <div class="modal">
@@ -3230,6 +3381,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
   };
   const IDEA_NOTES_STORAGE_KEY = 'manuscript_idea_notes_v1'; // 自分で書いたネタ一覧
   const IDEA_SEEDS_STORAGE_KEY = 'manuscript_idea_seeds_v1'; // 取り込んだ種一覧（フェーズ1はダミーデータのみ）
+
+  // 2026-08-23新設：使い方ガイド（リール末尾固定の疑似カード、ネタ帳のさらに後ろ）用の定数
+  const HELP_COVER_DATAURL = "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20400%20225%22%3E%0A%3Crect%20width%3D%22400%22%20height%3D%22225%22%20fill%3D%22%23211f1b%22/%3E%0A%3Ccircle%20cx%3D%22200%22%20cy%3D%2295%22%20r%3D%2242%22%20fill%3D%22none%22%20stroke%3D%22%239b8ac4%22%20stroke-width%3D%224%22/%3E%0A%3Ctext%20x%3D%22200%22%20y%3D%22112%22%20font-family%3D%22Georgia%2C%20serif%22%20font-size%3D%2256%22%20fill%3D%22%239b8ac4%22%20text-anchor%3D%22middle%22%3E%3F%3C/text%3E%0A%3Ctext%20x%3D%22200%22%20y%3D%22175%22%20font-family%3D%22Courier%20New%2C%20monospace%22%20font-size%3D%2216%22%20fill%3D%22%23a09880%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%222%22%3EHELP%20GUIDE%3C/text%3E%0A%3C/svg%3E";
+  const HELP_PSEUDO_CARD = {
+    id: '__helpguide__',
+    isHelpGuide: true,
+    title: '使い方ガイド',
+    cover: HELP_COVER_DATAURL,
+    pinned: false
+  };
 
   let projects = [];
   let currentDetailId = null;
@@ -4053,6 +4214,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // 2026-08-21新設：リール型カード一覧用の横型カードHTML（16:9カバー・1行ステータス・開くボタン）
   function renderReelCard(p, isChecked){
+    // 2026-08-23新設：使い方ガイド（疑似カード）はネタ帳同様、進捗・PIN等を持たない簡易表示
+    if(p.isHelpGuide){
+      return `
+      <div class="reel-card help-guide-card" data-id="${p.id}">
+        <div class="rc-cover" data-role="cover">
+          <img src="${p.cover}" alt="">
+        </div>
+        <div class="rc-body">
+          <div class="rc-title">${escapeHTML(p.title)}</div>
+          <div class="rc-meta"><span>はじめての方はこちら</span></div>
+        </div>
+      </div>`;
+    }
     // 2026-08-23新設：ネタ帳（疑似カード）は進捗・PIN等を持たないため専用の簡易表示にする
     if(p.isIdeaBook){
       return `
@@ -4179,6 +4353,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     // projects配列には含めない（実データとして永続化されない特殊カード）ため、
     // 通常の並び替えロジックの外側、常に配列の一番最後に追加する。
     arr.push(IDEA_BOOK_PSEUDO_CARD);
+    // 2026-08-23新設：「使い方ガイド」を、ネタ帳のさらに後ろ（リール本当の末尾）に固定追加する。
+    arr.push(HELP_PSEUDO_CARD);
     return arr;
   }
 
@@ -4345,6 +4521,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
           if(offset === 0){
             const isCoverTap = !!e.target.closest('[data-role="cover"]');
             if(isCoverTap) openIdeaBook();
+            return;
+          }
+          reelGoTo(reelCenterIndex + offset);
+          return;
+        }
+        if(p.isHelpGuide){
+          // 使い方ガイドも選択モード対象外。中央にいる時だけ、カバータップでガイドモーダルを開く。
+          const offset = parseInt(card.dataset.offset, 10) || 0;
+          if(offset === 0){
+            const isCoverTap = !!e.target.closest('[data-role="cover"]');
+            if(isCoverTap) openHelpGuide();
             return;
           }
           reelGoTo(reelCenterIndex + offset);
@@ -4971,6 +5158,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function closeIdeaBook(){
     document.getElementById('ideaBookModalOverlay').classList.remove('active');
     stopIdeaSeedRotation();
+  }
+
+  // 2026-08-23新設：使い方ガイド
+  function openHelpGuide(){
+    document.getElementById('helpGuideModalOverlay').classList.add('active');
+  }
+  function closeHelpGuide(){
+    document.getElementById('helpGuideModalOverlay').classList.remove('active');
+  }
+  function initHelpGuideEvents(){
+    document.getElementById('helpGuideModalClose').onclick = closeHelpGuide;
+    document.getElementById('helpGuideModalOverlay').addEventListener('click', (e) => {
+      if(e.target.id === 'helpGuideModalOverlay') closeHelpGuide();
+    });
+    document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        const tab = btn.dataset.helptab;
+        document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('helpTabManual').classList.toggle('active', tab === 'manual');
+        document.getElementById('helpTabAi').classList.toggle('active', tab === 'ai');
+      };
+    });
   }
 
   // ideaSeedRotateMsごとに次の種へ切り替えるタイマーを開始する（間隔は「操作感の調整」で変更可能）。
@@ -8370,6 +8579,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   initIdeaBookEvents();
   initReelInteraction();
   initCoverPositionDrag();
+  initHelpGuideEvents();
   renderGrid();
   updateStorageUsageDisplay();
 
