@@ -3626,20 +3626,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     };
     if(shaToUse) body.sha = shaToUse;
 
-    let res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
-
-    // 422（sha未指定エラー）が出た場合、「SHA無しでPUTしたが実はファイルが存在した」ケースなので、
-    // その場で実際のSHAを取得し直して一度だけ自動リトライする。
-    // 原因の切り分けが完全でない状況への保険的対処であり、ユーザー体験上はエラーにしないための措置。
-    if(res.status === 422 && !body.sha){
-      const retryCheckRes = await ghApiRequest(cfg, targetFilename, 'GET');
-      if(retryCheckRes.ok){
-        const retryCheckJson = await retryCheckRes.json();
-        body.sha = retryCheckJson.sha;
-        res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
-      }
-    }
-
+    const res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
     if(res.status === 409){
       return { ok: false, conflict: true };
     }
