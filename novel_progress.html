@@ -3649,8 +3649,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // ローカルのproject全体をGitHubへ保存（新規 or 更新）。
   // expectedSha: 直前にfetchして知っている現在のリモートSHA（新規作成時はnull/undefined）
-  // 戻り値: { ok:true, newSha } または { ok:false, conflict:true } （409時）
-  async function ghPushProject(cfg, p, expectedSha){
+  // confirmedOverwrite: 「未記録だが既存ファイルがある」状態を、ユーザーが確認済みで上書き承認したかどうか
+  // 戻り値:
+  //   { ok:true, newSha }                      … 保存成功
+  //   { ok:false, conflict:true }               … 409（他端末更新の検知）
+  //   { ok:false, needsConfirmation:true, ... }  … 未記録なのに既存ファイルがあり、ユーザー確認が必要（保存は未実行）
+  async function ghPushProject(cfg, p, expectedSha, confirmedOverwrite){
     // 既存ファイル（旧タイトルで保存されたもの含む）を探す。
     // タイトルが変わっていれば、理想のファイル名（現在のタイトル基準）と食い違うため、
     // 「新ファイル名でPUT」→成功したら「旧ファイルをDELETE」の順でリネームする。
@@ -3663,9 +3667,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     //   ・リネーム時：targetFilenameは新規ファイルなので不要
     //   ・expectedSha（アプリが最後に把握したSHA）があればそれを使う → 実際のリモートと食い違っていれば
     //     GitHub側が409を返してくれるので、これが「他端末で更新されている」の正しい検知経路になる
-    //   ・expectedShaが無い（一度も同期していない）のに、実は既にファイルが存在するケースでは、
-    //     412ではなく422（sha未指定エラー）になってしまうため、その場合だけ実際のSHAを取得して補う
-    //     （＝一度も同期していない状態からの「先には自分しか触っていないはず」の初回保存として扱う）
+    //   ・expectedShaが無い（一度も同期していない）のに、実は既にファイルが存在するケースは、
+    //     「このデバイスが把握していない内容がGitHub上にある」ということなので、無言では進めない。
+    //     ユーザーが確認済み（confirmedOverwrite）でない限り、ここで一旦処理を止めて呼び出し元に確認を促す。
     let shaToUse = null;
     if(!needsRename){
       if(expectedSha){
@@ -3674,6 +3678,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
         const checkRes = await ghApiRequest(cfg, targetFilename, 'GET');
         if(checkRes.ok){
           const checkJson = await checkRes.json();
+          if(!confirmedOverwrite){
+            return { ok: false, needsConfirmation: true, remoteSha: checkJson.sha, filename: targetFilename };
+          }
           shaToUse = checkJson.sha;
         }
       }
@@ -6517,10 +6524,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
     btn.textContent = '保存中…';
     try {
       const expectedSha = p._githubSync ? p._githubSync.lastSyncedSha : undefined;
-      const result = await ghPushProject(cfg, p, expectedSha);
+      let result = await ghPushProject(cfg, p, expectedSha);
       if(!result.ok && result.conflict){
         alert('GitHub上のデータが、この端末が最後に把握した時点から更新されています。上書きすると他端末の変更が失われる可能性があります。先に「GitHubから取得」で最新内容を確認してください。');
         return;
+      }
+      if(!result.ok && result.needsConfirmation){
+        const proceed = confirm(
+          '⚠️ 重要な確認\n\n' +
+          'この端末は、この作品を一度もGitHubに保存したことがありません。ですが、GitHub上には既にこの作品のデータが存在しています（他端末や別の方法で保存されたものの可能性があります）。\n\n' +
+          'このまま保存すると、GitHub上の既存データはこの端末の内容で完全に上書きされ、元に戻せません。\n\n' +
+          '先に「GitHubから取得」でGitHub上の内容を確認することを強くおすすめします。\n\n' +
+          'それでも、この端末の内容で上書きしてよろしいですか？'
+        );
+        if(!proceed) return;
+        result = await ghPushProject(cfg, p, expectedSha, true);
+        if(!result.ok && result.conflict){
+          alert('確認中に他端末がさらに更新したため、保存を中断しました。お手数ですが、もう一度お試しください。');
+          return;
+        }
       }
       ghMarkSynced(p, result.newSha);
       save();
