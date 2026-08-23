@@ -665,6 +665,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
   max-width:calc(100% - 12px);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+/* 2026-08-23新設：作品ID表示（デバッグ・特定用途向け、控えめに右下へ） */
+.reel-card .rc-id-badge {
+  position:absolute; bottom:6px; right:6px;
+  font-family:var(--font-ui); font-size:0.5rem;
+  background:rgba(10,9,7,0.55); color:var(--text3);
+  padding:1px 4px; border-radius:3px;
+  letter-spacing:0.02em;
+}
 .reel-card .rc-body {
   flex:1; min-width:0;
   padding:10px 14px;
@@ -2816,6 +2824,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <textarea class="section-textarea auto-resize-textarea" id="detailIntroTextarea" placeholder="読者向けの紹介文・あらすじ紹介など" style="min-height:80px;"></textarea>
       </div>
 
+      <div class="detail-section" style="font-size:0.65rem; color:var(--text3); font-family:var(--font-ui);">
+        作品ID：<span id="detailProjectIdText"></span>
+      </div>
+
     </div>
     <div class="modal-footer" style="flex-wrap:wrap;">
     </div>
@@ -4711,6 +4723,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <div class="rc-cover" data-role="cover">
         ${p.pinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="rc-editor-badge">${escapeHTML(p.editor)}</div>` : ''}
+        <div class="rc-id-badge">${escapeHTML(p.id.slice(0, 7))}…</div>
         ${coverHTML}
       </div>
       <div class="rc-body">
@@ -5811,6 +5824,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     document.getElementById('detailTitle').textContent = p.title || '無題';
     updateAuthorDisplay(p);
+    document.getElementById('detailProjectIdText').textContent = p.id;
     document.getElementById('pinToggleBtn').textContent = p.pinned ? '📌 優先を解除' : '📌 優先に設定';
     document.getElementById('pinToggleBtn').classList.toggle('active', p.pinned);
     if(p.pinned){
