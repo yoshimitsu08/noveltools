@@ -3498,10 +3498,35 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // ---------- GitHub Contents API ----------
+  // ファイル名は「manuscript_sync_<作品ID>_<タイトル>.json」形式。
+  // 人間が一覧を見て判別しやすいようタイトルを含めるが、同期対象の特定はID部分（プレフィックス）だけで行う。
+  // これにより、タイトルを変更してもファイル名の変化を気にせず追跡できる（変更後の初回保存時に自動でリネームされる）。
+  function ghFileNamePrefix(p){
+    return `manuscript_sync_${p.id}_`;
+  }
   function ghFileNameForProject(p){
-    // ローカルのエクスポートファイル名規則（MS_yymmddhh_作品名.json）と揃えず、
-    // 「作品ID固定」のファイル名にする（同期対象を一意に特定するため、タイトル変更に影響されない）
-    return `manuscript_sync_${p.id}.json`;
+    const safeTitle = (p.title || '無題').replace(/[\\/:*?"<>|]/g, '_').slice(0, 30);
+    return `${ghFileNamePrefix(p)}${safeTitle}.json`;
+  }
+
+  // リポジトリ直下の一覧から、この作品IDに対応するファイルを探す。
+  // 新形式（manuscript_sync_<ID>_タイトル.json）・旧形式（manuscript_sync_<ID>.json、2026-08-23以前）の両方に対応。
+  // 見つからなければ null。
+  async function ghFindExistingFile(cfg, p){
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/`, {
+      headers: {
+        'Authorization': `Bearer ${cfg.pat}`,
+        'Accept': 'application/vnd.github+json'
+      }
+    });
+    if(!res.ok) throw new Error(`GitHub一覧取得エラー（${res.status}）`);
+    const list = await res.json();
+    const newPrefix = ghFileNamePrefix(p);      // manuscript_sync_<ID>_
+    const oldExact = `manuscript_sync_${p.id}.json`; // 旧形式（ID直後が.json）
+    const found = list.find(item =>
+      item.type === 'file' && (item.name.startsWith(newPrefix) || item.name === oldExact)
+    );
+    return found ? found.name : null;
   }
 
   function ghApiUrl(cfg, filename){
@@ -3521,9 +3546,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // リモートの現在の状態を取得。存在しない場合は null を返す（新規作成扱い）。
-  // 戻り値: { sha, payload(復号済みJSオブジェクト), rawContentJson } | null
+  // 戻り値: { sha, payload(復号済みJSオブジェクト), filename } | null
   async function ghFetchRemote(cfg, p){
-    const filename = ghFileNameForProject(p);
+    const filename = await ghFindExistingFile(cfg, p);
+    if(!filename) return null;
     const res = await ghApiRequest(cfg, filename, 'GET');
     if(res.status === 404) return null;
     if(!res.ok) throw new Error(`GitHub取得エラー（${res.status}）`);
@@ -3533,13 +3559,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const encryptedPayload = JSON.parse(decodedJsonStr);
     const plainJsonStr = await ghDecrypt(encryptedPayload, cfg.passphrase);
     const payload = JSON.parse(plainJsonStr);
-    return { sha: json.sha, payload };
+    return { sha: json.sha, payload, filename };
   }
 
   // ローカルのSHAだけを軽量に確認したい場合（中身のfetch・復号をしない）
   // 詳細モーダルを開いたときの「前回エクスポート後、初回チェック」用
   async function ghFetchRemoteShaOnly(cfg, p){
-    const filename = ghFileNameForProject(p);
+    const filename = await ghFindExistingFile(cfg, p);
+    if(!filename) return null;
     const res = await ghApiRequest(cfg, filename, 'GET');
     if(res.status === 404) return null;
     if(!res.ok) throw new Error(`GitHub取得エラー（${res.status}）`);
@@ -3551,7 +3578,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // expectedSha: 直前にfetchして知っている現在のリモートSHA（新規作成時はnull/undefined）
   // 戻り値: { ok:true, newSha } または { ok:false, conflict:true } （409時）
   async function ghPushProject(cfg, p, expectedSha){
-    const filename = ghFileNameForProject(p);
+    // 既存ファイル（旧タイトルで保存されたもの含む）を探す。
+    // タイトルが変わっていれば、理想のファイル名（現在のタイトル基準）と食い違うため、
+    // 「新ファイル名でPUT」→成功したら「旧ファイルをDELETE」の順でリネームする。
+    const existingFilename = await ghFindExistingFile(cfg, p);
+    const idealFilename = ghFileNameForProject(p);
+    const needsRename = existingFilename && existingFilename !== idealFilename;
+    const targetFilename = idealFilename;
+
     const exportPayload = {
       exportedFrom: 'Manuscript',
       exportVersion: 1,
@@ -3567,9 +3601,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
       message: `Manuscript sync: ${p.title || '無題'} (${new Date().toISOString()})`,
       content: contentB64
     };
-    if(expectedSha) body.sha = expectedSha;
+    // リネームが発生しない通常更新の場合のみ、SHA競合チェックを効かせる。
+    // リネーム時（新ファイル名でのPUT）は対象ファイルが存在しないため、SHAは付けない。
+    if(expectedSha && !needsRename) body.sha = expectedSha;
 
-    const res = await ghApiRequest(cfg, filename, 'PUT', body);
+    const res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
     if(res.status === 409){
       return { ok: false, conflict: true };
     }
@@ -3578,7 +3614,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
       throw new Error(`GitHub保存エラー（${res.status}）${errText}`);
     }
     const json = await res.json();
-    return { ok: true, newSha: json.content.sha };
+
+    // 新ファイル名での保存に成功した後、旧ファイルが残っていれば削除する。
+    if(needsRename){
+      try {
+        const oldFileRes = await ghApiRequest(cfg, existingFilename, 'GET');
+        if(oldFileRes.ok){
+          const oldFileJson = await oldFileRes.json();
+          await ghApiRequest(cfg, existingFilename, 'DELETE', {
+            message: `Manuscript sync: rename cleanup (${p.title || '無題'})`,
+            sha: oldFileJson.sha
+          });
+        }
+      } catch(_e){
+        // 旧ファイルの削除に失敗しても、新ファイルへの保存自体は成功しているため致命的ではない。
+        // 次回同期時に再度リネーム処理が走り、削除が再試行される。
+      }
+    }
+
+    return { ok: true, newSha: json.content.sha, filename: targetFilename };
   }
 
   // ---------- ローカル側の「最終同期状態」記録 ----------
