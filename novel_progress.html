@@ -185,8 +185,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 
 /* ---------- Header rotator (legend / storage / pin banner) ---------- */
-.header-rotator {
+.header-rotator-wrap {
   margin-top:14px;
+}
+.header-rotator {
   position:relative;
   height:24px; /* 2026-08-22: 全スライド（凡例／ストレージ／ピン留め）が1行になったため高さを統一 */
   overflow:hidden;
@@ -639,7 +641,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .reel-card.pinned { border-color:var(--accent); }
 .reel-card.idea-book-card { border-color:#9b8ac4; } /* 2026-08-23新設：ネタ帳カードの差別化（掛けんだ紫） */
 .reel-card .rc-cover {
-  width:199px; flex-shrink:0; /* 2026-08-23変更：正方形(112x112)から表紙本来の比率16:9(112px高基準)へ */
+  width:160px; flex-shrink:0; /* 2026-08-23再変更：199px→160pxに縮小し、タイトル領域を確保（object-positionでのトリミング位置調整機能とセット） */
   height:100%;
   background:var(--bg3);
   display:flex; align-items:center; justify-content:center;
@@ -1161,6 +1163,27 @@ h1 .mark { color:var(--accent); font-style:italic; }
   letter-spacing:0.05em;
 }
 .cover-upload input[type="file"] { display:none; }
+
+/* 2026-08-23新設：カバー画像の位置調整モーダル（object-positionをドラッグで決める） */
+.cover-position-frame {
+  width:100%;
+  max-width:320px;
+  aspect-ratio: 16 / 9;
+  margin:0 auto 14px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  overflow:hidden;
+  position:relative;
+  cursor:grab;
+  touch-action:none; /* ドラッグ中にページスクロールが割り込まないように */
+}
+.cover-position-frame.dragging { cursor:grabbing; }
+.cover-position-frame img {
+  width:100%; height:100%;
+  object-fit:cover;
+  pointer-events:none; /* ドラッグ判定はframe側で受ける */
+}
 
 /* stage editors */
 .stage-editor {
@@ -2387,26 +2410,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
     </div>
   </div>
 
-  <div class="header-rotator" id="headerRotator">
-    <div class="rotator-slide active" data-slide="legend">
-      <div class="legend">
-        <div class="legend-item"><span class="legend-dot" style="background:var(--c-genan)"></span>設定・プロット</div>
-        <div class="legend-item"><span class="legend-dot" style="background:var(--c-honbun)"></span>本文執筆中</div>
-        <div class="legend-item"><span class="legend-dot" style="background:var(--c-kousei)"></span>推敲中</div>
-        <div class="legend-item"><span class="legend-dot" style="background:var(--accent)"></span>完結</div>
+  <div class="header-rotator-wrap">
+    <div class="header-rotator" id="headerRotator">
+      <div class="rotator-slide active" data-slide="legend">
+        <div class="legend">
+          <div class="legend-item"><span class="legend-dot" style="background:var(--c-genan)"></span>設定・プロット</div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--c-honbun)"></span>本文執筆中</div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--c-kousei)"></span>推敲中</div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--accent)"></span>完結</div>
+        </div>
       </div>
-    </div>
-    <div class="rotator-slide" data-slide="storage">
-      <div class="storage-usage-bar">
-        <div class="storage-usage-track"><div class="storage-usage-fill" id="storageUsageFill"></div></div>
-        <span class="storage-usage-text" id="storageUsageText">0 KB / 5 MB</span>
+      <div class="rotator-slide" data-slide="storage">
+        <div class="storage-usage-bar">
+          <div class="storage-usage-track"><div class="storage-usage-fill" id="storageUsageFill"></div></div>
+          <span class="storage-usage-text" id="storageUsageText">0 KB / 5 MB</span>
+        </div>
       </div>
-    </div>
-    <div class="rotator-slide" data-slide="pin" id="priorityBannerSlide">
-      <div class="priority-banner" id="priorityBanner">
-        <div class="pin-icon">📌</div>
-        <span class="pin-label-badge">NOW</span>
-        <div class="pin-title" id="pinTitle">—</div>
+      <div class="rotator-slide" data-slide="pin" id="priorityBannerSlide">
+        <div class="priority-banner" id="priorityBanner">
+          <div class="pin-icon">📌</div>
+          <span class="pin-label-badge">NOW</span>
+          <div class="pin-title" id="pinTitle">—</div>
+        </div>
       </div>
     </div>
     <div class="rotator-dots" id="rotatorDots"></div>
@@ -2568,6 +2593,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <button type="button" class="dropdown-item" id="menuEditProofreaderBtn">🕶️ 推敲を編集</button>
         <button type="button" class="dropdown-item" id="menuEditRevisorBtn">💋 加筆を編集</button>
         <button type="button" class="dropdown-item" id="menuEditImageCreditBtn">🖼️ 画像を編集</button>
+        <button type="button" class="dropdown-item" id="menuCoverPositionBtn">🖼️ カバー画像の位置を調整</button>
         <button type="button" class="dropdown-item" id="menuHistoryBtn">🕒 更新履歴を表示</button>
         <button type="button" class="dropdown-item" id="menuExportBtn">📤 この作品をエクスポート</button>
         <button type="button" class="dropdown-item danger" id="menuDeleteProjectBtn">🗑 この作品を削除</button>
@@ -2748,6 +2774,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <label>ヒラメキの種：自動更新間隔：<span id="ideaSeedRotateMsValueLabel">3.0</span>秒</label>
         <input type="range" id="ideaSeedRotateMsRangeInput" min="1000" max="10000" step="500" style="width:100%;">
       </div>
+      <div class="chapter-note" style="margin:18px 0 14px;">
+        ダッシュボード上部で「凡例／ストレージ容量／ピン留め中の作品」が自動で切り替わる間隔です。
+      </div>
+      <div class="field">
+        <label>トピック表示の切替間隔：<span id="headerRotateMsValueLabel">2.0</span>秒</label>
+        <input type="range" id="headerRotateMsRangeInput" min="1000" max="10000" step="500" style="width:100%;">
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn" id="longPressResetBtn">デフォルトに戻す</button>
@@ -2768,6 +2801,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
         アプリ全体の配色テーマを選べます。背景はいずれもダーク基調のまま、アクセント色の系統が変わります。
       </div>
       <div id="themeOptionsList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Cover Position Modal (カバー画像の位置調整) 2026-08-23新設 ============ -->
+<div class="modal-overlay" id="coverPositionModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>画像の位置を調整</h2>
+      <button class="modal-close" id="coverPositionModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note" style="margin-bottom:14px;">
+        枠内で画像をドラッグして、リールカードに表示したい部分を中央に合わせてください。
+      </div>
+      <div class="cover-position-frame" id="coverPositionFrame">
+        <img id="coverPositionImg" src="" alt="">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="coverPositionResetBtn">中央に戻す</button>
+      <button class="btn primary" id="coverPositionSaveBtn" style="flex:1;">この位置で決定</button>
     </div>
   </div>
 </div>
@@ -3150,6 +3205,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   const REEL_BG_OPACITY_STORAGE_KEY = 'manuscript_reel_bg_opacity_v1';
   const DEFAULT_IDEA_SEED_ROTATE_MS = 3000;
   const IDEA_SEED_ROTATE_MS_STORAGE_KEY = 'manuscript_idea_seed_rotate_ms_v1';
+  const DEFAULT_HEADER_ROTATE_MS = 2000;
+  const HEADER_ROTATE_MS_STORAGE_KEY = 'manuscript_header_rotate_ms_v1';
 
   // 2026-08-23新設：テーマカラー機能
   const THEME_STORAGE_KEY = 'manuscript_theme_v1';
@@ -3187,6 +3244,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let reelInertia = DEFAULT_REEL_INERTIA;
   let reelBgOpacity = DEFAULT_REEL_BG_OPACITY;
   let ideaSeedRotateMs = DEFAULT_IDEA_SEED_ROTATE_MS;
+  let headerRotateMs = DEFAULT_HEADER_ROTATE_MS;
   let currentTheme = DEFAULT_THEME;
   let reelBgCurrentId = null;
 
@@ -3273,6 +3331,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function saveIdeaSeedRotateMs(ms){
     ideaSeedRotateMs = ms;
     try { localStorage.setItem(IDEA_SEED_ROTATE_MS_STORAGE_KEY, String(ms)); } catch(_e){ /* ignore */ }
+  }
+  function loadHeaderRotateMs(){
+    try {
+      const saved = localStorage.getItem(HEADER_ROTATE_MS_STORAGE_KEY);
+      const n = parseInt(saved, 10);
+      if(!isNaN(n) && n >= 1000 && n <= 10000) headerRotateMs = n;
+    } catch(_e){ /* keep default */ }
+  }
+  function saveHeaderRotateMs(ms){
+    headerRotateMs = ms;
+    try { localStorage.setItem(HEADER_ROTATE_MS_STORAGE_KEY, String(ms)); } catch(_e){ /* ignore */ }
   }
 
   // 2026-08-23新設：テーマカラー機能
@@ -3997,8 +4066,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
         </div>
       </div>`;
     }
+    const coverPos = p.coverPosition || DEFAULT_COVER_POSITION;
     const coverHTML = p.cover
-      ? `<img src="${p.cover}" alt="">`
+      ? `<img src="${p.cover}" alt="" style="object-position:${coverPos.x}% ${coverPos.y}%;">`
       : `<span class="no-cover-glyph">✒</span>`;
     const total = chapterTotal(p);
     const done = chapterDoneCount(p);
@@ -4694,7 +4764,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function restartRotatorTimer(){
     if(rotatorTimer) clearInterval(rotatorTimer);
     if(rotatorSlideEls.length <= 1) return;
-    rotatorTimer = setInterval(() => goToRotatorSlide(rotatorIndex + 1), 2000);
+    rotatorTimer = setInterval(() => goToRotatorSlide(rotatorIndex + 1), headerRotateMs);
   }
 
   // タップで手動送り（ドットやピン留めバナー自体のクリックは各要素側で処理済みなので、
@@ -4757,6 +4827,86 @@ h1 .mark { color:var(--accent); font-style:italic; }
     };
     reader.readAsDataURL(file);
   }
+
+  // 2026-08-23新設：カバー画像の位置調整（object-positionをドラッグで決める）
+  // p.coverPosition = {x, y}（0〜100の%値、object-positionにそのまま使う）。未設定時は中央(50,50)扱い。
+  let coverPositionTargetId = null;
+  let coverPositionDragState = null; // {startX, startY, startPosX, startPosY}
+  const DEFAULT_COVER_POSITION = { x: 50, y: 50 };
+
+  function openCoverPositionModal(projectId){
+    const p = projects.find(x => x.id === projectId);
+    if(!p || !p.cover) return;
+    coverPositionTargetId = projectId;
+    const pos = p.coverPosition || DEFAULT_COVER_POSITION;
+    const img = document.getElementById('coverPositionImg');
+    img.src = p.cover;
+    img.style.objectPosition = `${pos.x}% ${pos.y}%`;
+    document.getElementById('coverPositionModalOverlay').classList.add('active');
+  }
+
+  function applyCoverPositionDelta(dxPercent, dyPercent){
+    const img = document.getElementById('coverPositionImg');
+    const current = img.style.objectPosition.split(' ').map(v => parseFloat(v));
+    let x = (current[0] || 50) + dxPercent;
+    let y = (current[1] || 50) + dyPercent;
+    x = Math.max(0, Math.min(100, x));
+    y = Math.max(0, Math.min(100, y));
+    img.style.objectPosition = `${x}% ${y}%`;
+  }
+
+  function initCoverPositionDrag(){
+    const frame = document.getElementById('coverPositionFrame');
+    frame.addEventListener('pointerdown', (e) => {
+      frame.classList.add('dragging');
+      frame.setPointerCapture(e.pointerId);
+      coverPositionDragState = { lastX: e.clientX, lastY: e.clientY };
+    });
+    frame.addEventListener('pointermove', (e) => {
+      if(!coverPositionDragState) return;
+      const rect = frame.getBoundingClientRect();
+      // ドラッグした距離を「枠に対する%」に変換。ドラッグ方向と見える範囲の移動方向は逆になる
+      // （画像を右にドラッグ＝見せたい部分は左にずれる＝object-positionのxは減る）ため符号を反転。
+      const dx = ((e.clientX - coverPositionDragState.lastX) / rect.width) * -100;
+      const dy = ((e.clientY - coverPositionDragState.lastY) / rect.height) * -100;
+      applyCoverPositionDelta(dx, dy);
+      coverPositionDragState.lastX = e.clientX;
+      coverPositionDragState.lastY = e.clientY;
+    });
+    const endDrag = (e) => {
+      frame.classList.remove('dragging');
+      coverPositionDragState = null;
+    };
+    frame.addEventListener('pointerup', endDrag);
+    frame.addEventListener('pointercancel', endDrag);
+  }
+
+  document.getElementById('coverPositionModalClose').onclick = () => {
+    document.getElementById('coverPositionModalOverlay').classList.remove('active');
+    coverPositionTargetId = null;
+  };
+  document.getElementById('coverPositionModalOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'coverPositionModalOverlay'){
+      document.getElementById('coverPositionModalOverlay').classList.remove('active');
+      coverPositionTargetId = null;
+    }
+  });
+  document.getElementById('coverPositionResetBtn').onclick = () => {
+    document.getElementById('coverPositionImg').style.objectPosition = `${DEFAULT_COVER_POSITION.x}% ${DEFAULT_COVER_POSITION.y}%`;
+  };
+  document.getElementById('coverPositionSaveBtn').onclick = () => {
+    const p = projects.find(x => x.id === coverPositionTargetId);
+    if(p){
+      const img = document.getElementById('coverPositionImg');
+      const [x, y] = img.style.objectPosition.split(' ').map(v => parseFloat(v));
+      p.coverPosition = { x: x || 50, y: y || 50 };
+      save();
+      renderGrid();
+      if(currentDetailId === p.id) updateDetailCoverPreview(p);
+    }
+    document.getElementById('coverPositionModalOverlay').classList.remove('active');
+    coverPositionTargetId = null;
+  };
 
   // ---------- Detail Modal ----------
   function updateAuthorDisplay(p){
@@ -5151,6 +5301,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const wrap = document.getElementById('detailCoverUpload');
     if(p.cover){
       img.src = p.cover;
+      const pos = p.coverPosition || DEFAULT_COVER_POSITION;
+      img.style.objectPosition = `${pos.x}% ${pos.y}%`;
       img.style.display = 'block';
       hint.style.display = 'none';
       wrap.classList.add('has-image');
@@ -5254,6 +5406,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const seedRotateRange = document.getElementById('ideaSeedRotateMsRangeInput');
     seedRotateRange.value = ideaSeedRotateMs;
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (ideaSeedRotateMs/1000).toFixed(1);
+    const headerRotateRange = document.getElementById('headerRotateMsRangeInput');
+    headerRotateRange.value = headerRotateMs;
+    document.getElementById('headerRotateMsValueLabel').textContent = (headerRotateMs/1000).toFixed(1);
     document.getElementById('longPressModalOverlay').classList.add('active');
   };
   document.getElementById('longPressModalClose').onclick = () => {
@@ -5283,6 +5438,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
   document.getElementById('ideaSeedRotateMsRangeInput').addEventListener('input', (e) => {
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (parseInt(e.target.value,10)/1000).toFixed(1);
   });
+  document.getElementById('headerRotateMsRangeInput').addEventListener('input', (e) => {
+    document.getElementById('headerRotateMsValueLabel').textContent = (parseInt(e.target.value,10)/1000).toFixed(1);
+  });
   document.getElementById('longPressResetBtn').onclick = () => {
     document.getElementById('longPressRangeInput').value = DEFAULT_LONGPRESS_MS;
     document.getElementById('longPressValueLabel').textContent = (DEFAULT_LONGPRESS_MS/1000).toFixed(2);
@@ -5298,6 +5456,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('reelBgOpacityValueLabel').textContent = DEFAULT_REEL_BG_OPACITY.toFixed(2);
     document.getElementById('ideaSeedRotateMsRangeInput').value = DEFAULT_IDEA_SEED_ROTATE_MS;
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (DEFAULT_IDEA_SEED_ROTATE_MS/1000).toFixed(1);
+    document.getElementById('headerRotateMsRangeInput').value = DEFAULT_HEADER_ROTATE_MS;
+    document.getElementById('headerRotateMsValueLabel').textContent = (DEFAULT_HEADER_ROTATE_MS/1000).toFixed(1);
   };
   document.getElementById('longPressSaveBtn').onclick = () => {
     const val = parseInt(document.getElementById('longPressRangeInput').value, 10);
@@ -5315,6 +5475,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const seedRotateVal = parseInt(document.getElementById('ideaSeedRotateMsRangeInput').value, 10);
     saveIdeaSeedRotateMs(seedRotateVal);
     if(ideaSeedRotateTimer) startIdeaSeedRotation(); // ネタ帳が開いていれば新しい間隔で再スタート
+    const headerRotateVal = parseInt(document.getElementById('headerRotateMsRangeInput').value, 10);
+    saveHeaderRotateMs(headerRotateVal);
+    if(rotatorTimer) restartRotatorTimer(); // ヘッダローテーターが動作中なら新しい間隔で再スタート
     document.getElementById('longPressModalOverlay').classList.remove('active');
   };
 
@@ -5662,6 +5825,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     save();
     updateAuthorDisplay(p);
   };
+  document.getElementById('menuCoverPositionBtn').onclick = () => {
+    document.getElementById('detailDropdown').classList.remove('active');
+    const p = projects.find(x=>x.id===currentDetailId);
+    if(!p) return;
+    if(!p.cover){ alert('先にカバー画像を設定してください。'); return; }
+    openCoverPositionModal(p.id);
+  };
   document.getElementById('menuHistoryBtn').onclick = () => {
     document.getElementById('detailDropdown').classList.remove('active');
     const p = projects.find(x=>x.id===currentDetailId);
@@ -5706,9 +5876,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(!p || !e.target.files[0]) return;
     handleCoverFile(e.target.files[0], (dataUrl) => {
       p.cover = dataUrl;
+      p.coverPosition = null; // 新しい画像なので位置指定をリセット（中央からやり直し）
       p.updatedAt = Date.now();
       save();
       updateDetailCoverPreview(p);
+      openCoverPositionModal(p.id); // 2026-08-23新設：アップロード直後に位置調整モーダルを開く
     });
   });
 
@@ -8179,11 +8351,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
   loadReelBgOpacity();
   document.documentElement.style.setProperty('--reel-bg-opacity', String(reelBgOpacity));
   loadIdeaSeedRotateMs();
+  loadHeaderRotateMs();
   loadBookmarkColor();
   loadIdeaNotes();
   loadIdeaSeeds();
   initIdeaBookEvents();
   initReelInteraction();
+  initCoverPositionDrag();
   renderGrid();
   updateStorageUsageDisplay();
 
