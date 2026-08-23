@@ -312,6 +312,8 @@ footer.app-footer {
 <div class="modal-overlay" id="customerEditModal">
   <div class="modal-sheet">
     <div class="modal-title">顧客情報の編集</div>
+    <div class="modal-field-label">顧客ID（任意・英数字・ハイフン・アンダーバーのみ）</div>
+    <input type="text" id="editCustomerId" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
     <div class="modal-field-label">表示名</div>
     <input type="text" id="editCustomerName" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--font-body);font-size:0.9rem;padding:10px 12px;border-radius:8px;">
     <div class="modal-field-label">メモ</div>
@@ -358,7 +360,7 @@ function emptyData() {
     brands: [],      // {id, noteName, brandName}
     works: [],        // {id, title, brandId, memo, aliases: [表記ゆれの別タイトル文字列, ...]}
     sales: [],        // {txId, datetime, buyerNameRaw, workId, contentNameRaw, amount, amountExTax, tax, paymentMethod, customerId}
-    customers: [],    // {id, displayName, memo, createdAt}
+    customers: [],    // {id, displayName, memo, createdAt, isProvisionalId}
     meta: {
       lastImportAt: null,
       lastExportAt: null,
@@ -379,11 +381,22 @@ function loadData() {
     if (!raw) return emptyData();
     const parsed = JSON.parse(raw);
     if (!parsed.version) return emptyData();
+    migrateCustomerIds(parsed);
     return parsed;
   } catch (e) {
     console.error('データ読み込みエラー:', e);
     return emptyData();
   }
+}
+
+// 既存の顧客データにisProvisionalIdフィールドが無い場合、システム自動生成ID（cust_で始まる）を仮IDとして扱う
+function migrateCustomerIds(data) {
+  if (!data.customers) return;
+  data.customers.forEach(c => {
+    if (typeof c.isProvisionalId !== 'boolean') {
+      c.isProvisionalId = typeof c.id === 'string' && c.id.startsWith('cust_');
+    }
+  });
 }
 
 function saveData() {
@@ -511,7 +524,7 @@ function importNoteCSV(text) {
     if (buyerName && buyerName !== 'ゲスト') {
       let customer = ledgerData.customers.find(c => c.displayName === buyerName);
       if (!customer) {
-        customer = { id: genId('cust'), displayName: buyerName, memo: '', createdAt: new Date().toISOString() };
+        customer = { id: genId('cust'), displayName: buyerName, memo: '', createdAt: new Date().toISOString(), isProvisionalId: true };
         ledgerData.customers.push(customer);
         autoRegisteredCustomers++;
       }
@@ -608,6 +621,7 @@ function importMasterJSON(file, callback) {
     try {
       const parsed = JSON.parse(e.target.result);
       if (!parsed.version) throw new Error('不正な形式です');
+      migrateCustomerIds(parsed);
       ledgerData = parsed;
       ledgerData.meta.exportedFlag = true; // 読み込み直後は「エクスポート済み状態と同じ」とみなす
       saveData();
@@ -1080,7 +1094,7 @@ function renderUnlinked() {
     const sale = ledgerData.sales.find(s => s.txId === txId);
     const name = prompt('顧客の表示名を入力してください（例：noteアカウント名や識別メモ）', sale.buyerNameRaw !== 'ゲスト' ? sale.buyerNameRaw : '');
     if (!name) return;
-    const newCustomer = { id: genId('cust'), displayName: name.trim(), memo: '', createdAt: new Date().toISOString() };
+    const newCustomer = { id: genId('cust'), displayName: name.trim(), memo: '', createdAt: new Date().toISOString(), isProvisionalId: true };
     ledgerData.customers.push(newCustomer);
     sale.customerId = newCustomer.id;
     markDirty();
@@ -1113,6 +1127,13 @@ function sortCustomerRows(rows) {
     rows.sort((a, b) => a.total - b.total);
   } else if (customerSortOrder === 'name') {
     rows.sort((a, b) => a.customer.displayName.localeCompare(b.customer.displayName, 'ja'));
+  } else if (customerSortOrder === 'id_unset_first') {
+    rows.sort((a, b) => {
+      const aUnset = a.customer.isProvisionalId ? 0 : 1;
+      const bUnset = b.customer.isProvisionalId ? 0 : 1;
+      if (aUnset !== bUnset) return aUnset - bUnset;
+      return b.total - a.total;
+    });
   } else {
     rows.sort((a, b) => b.total - a.total); // amount_desc（デフォルト）
   }
@@ -1146,25 +1167,34 @@ function renderCustomerList() {
   });
   sortCustomerRows(rows);
 
+  const unsetIdCount = ledgerData.customers.filter(c => c.isProvisionalId).length;
+
   const sortOptions = [
     { value: 'amount_desc', label: '購入額が多い順' },
     { value: 'amount_asc', label: '購入額が少ない順' },
-    { value: 'name', label: '名前（あいうえ順）' }
+    { value: 'name', label: '名前（あいうえ順）' },
+    { value: 'id_unset_first', label: 'ID未設定を先頭に' }
   ];
   const sortSelectHtml = `
     <select id="customerSortSelect" style="${inputStyle}margin-bottom:12px;width:auto;">
       ${sortOptions.map(o => `<option value="${o.value}" ${o.value === customerSortOrder ? 'selected' : ''}>${o.label}</option>`).join('')}
     </select>`;
 
+  const unsetIdHint = unsetIdCount > 0 ? `<div style="color:var(--text3);font-size:0.78rem;margin-bottom:10px;">顧客ID未設定：${unsetIdCount}件</div>` : '';
+
   el.innerHTML = `
     <div class="section-title">顧客一覧</div>
     <div class="master-layout">
       <div class="master-list">
         ${sortSelectHtml}
+        ${unsetIdHint}
         ${rows.map(r => `
           <div class="card" data-customer-card="${r.customer.id}" style="cursor:pointer;">
+            ${r.customer.isProvisionalId
+              ? `<div style="color:var(--text3);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">仮ID</div>`
+              : `<div style="color:var(--accent);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;">${escapeHtml(r.customer.id)}</div>`}
             <div style="display:flex;justify-content:space-between;align-items:baseline;">
-              <div style="font-family:var(--font-ui);">${escapeHtml(r.customer.displayName)}</div>
+              <div style="font-family:var(--font-ui);color:var(--text);margin-top:2px;">${escapeHtml(r.customer.displayName)}</div>
               <div style="color:var(--accent);font-family:var(--font-ui);">¥${r.total.toLocaleString()}</div>
             </div>
             <div style="color:var(--text3);font-size:0.78rem;margin-top:4px;">購入 ${r.sales.length}件</div>
@@ -1201,7 +1231,7 @@ function addCustomerDirect() {
   const input = document.getElementById('newCustomerName');
   const name = input.value.trim();
   if (!name) { alert('表示名を入力してください。'); return; }
-  ledgerData.customers.push({ id: genId('cust'), displayName: name, memo: '', createdAt: new Date().toISOString() });
+  ledgerData.customers.push({ id: genId('cust'), displayName: name, memo: '', createdAt: new Date().toISOString(), isProvisionalId: true });
   markDirty();
   renderCustomerList();
 }
@@ -1219,6 +1249,7 @@ function openCustomerDetail(id) {
     return `・${formatNoteDatetime(s.datetime)} ${work ? work.title : s.contentNameRaw} ¥${s.amount}`;
   }).join('\n');
 
+  document.getElementById('editCustomerId').value = c.isProvisionalId ? '' : c.id;
   document.getElementById('editCustomerName').value = c.displayName;
   document.getElementById('editCustomerMemo').value = c.memo || '';
   document.getElementById('editCustomerSalesHistory').textContent = salesListText || '（購入履歴なし）';
@@ -1239,6 +1270,36 @@ function saveCustomerModal() {
     alert('表示名を空にはできません。');
     return;
   }
+
+  const newId = document.getElementById('editCustomerId').value.trim();
+
+  if (!newId) {
+    // ID欄が空欄のまま保存された場合
+    if (!c.isProvisionalId) {
+      alert('顧客IDは一度設定すると空欄には戻せません。別のIDに変更してください。');
+      return;
+    }
+    // 元々仮IDだった場合は何もしない（仮IDのまま維持）
+  } else {
+    if (!isValidWorkId(newId)) {
+      alert('顧客IDに使えるのは英数字・ハイフン（-）・アンダーバー（_）のみです。');
+      return;
+    }
+    const oldId = c.id;
+    if (newId !== oldId) {
+      // 他の顧客と重複しないか確認
+      if (ledgerData.customers.some(x => x.id === newId && x !== c)) {
+        alert(`顧客ID「${newId}」は既に使われています。別のIDを指定してください。`);
+        return;
+      }
+      // この顧客IDを参照している売上データ(customerId)を新しいIDに一括で追従させる
+      ledgerData.sales.forEach(s => { if (s.customerId === oldId) s.customerId = newId; });
+      c.id = newId;
+      currentEditingCustomerId = newId;
+    }
+    c.isProvisionalId = false;
+  }
+
   c.displayName = newName;
   c.memo = document.getElementById('editCustomerMemo').value.trim();
 
