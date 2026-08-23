@@ -3512,8 +3512,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // リポジトリ直下の一覧から、この作品IDに対応するファイルを探す。
   // 新形式（manuscript_sync_<ID>_タイトル.json）・旧形式（manuscript_sync_<ID>.json、2026-08-23以前）の両方に対応。
   // 見つからなければ null。
+  // cache: 'no-store' を明示し、直前のPUT/DELETE直後にブラウザ側の古いキャッシュを参照してしまうのを防ぐ。
   async function ghFindExistingFile(cfg, p){
-    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/`, {
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/?t=${Date.now()}`, {
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${cfg.pat}`,
         'Accept': 'application/vnd.github+json'
@@ -3536,6 +3538,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   async function ghApiRequest(cfg, filename, method, body){
     const res = await fetch(ghApiUrl(cfg, filename), {
       method: method || 'GET',
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${cfg.pat}`,
         'Accept': 'application/vnd.github+json'
@@ -3623,7 +3626,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
     };
     if(shaToUse) body.sha = shaToUse;
 
-    const res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
+    let res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
+
+    // 422（sha未指定エラー）が出た場合、「SHA無しでPUTしたが実はファイルが存在した」ケースなので、
+    // その場で実際のSHAを取得し直して一度だけ自動リトライする。
+    // 原因の切り分けが完全でない状況への保険的対処であり、ユーザー体験上はエラーにしないための措置。
+    if(res.status === 422 && !body.sha){
+      const retryCheckRes = await ghApiRequest(cfg, targetFilename, 'GET');
+      if(retryCheckRes.ok){
+        const retryCheckJson = await retryCheckRes.json();
+        body.sha = retryCheckJson.sha;
+        res = await ghApiRequest(cfg, targetFilename, 'PUT', body);
+      }
+    }
+
     if(res.status === 409){
       return { ok: false, conflict: true };
     }
