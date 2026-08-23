@@ -3577,6 +3577,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return json.sha;
   }
 
+  // PUT成功直後、GitHub API側の反映（結果整合性）遅延により、
+  // 直後のGETがまだ古い状態（sha不一致・404）を返すことがある。
+  // 「一定時間待つ」のではなく、「新しいshaが実際に読み取れるまで」を短間隔で確認する。
+  // 見つからない・不一致のままでも、上限に達したら諦めて処理は継続する（保存自体は成功しているため）。
+  async function ghWaitForPropagation(cfg, filename, expectedSha, maxTries, intervalMs){
+    const tries = maxTries || 4;
+    const interval = intervalMs || 500;
+    for(let i = 0; i < tries; i++){
+      await new Promise(r => setTimeout(r, interval));
+      try {
+        const res = await ghApiRequest(cfg, filename, 'GET');
+        if(res.ok){
+          const json = await res.json();
+          if(json.sha === expectedSha) return true;
+        }
+      } catch(_e){
+        // 取得失敗はリトライ継続（最終的にタイムアウト扱い）
+      }
+    }
+    return false; // 反映未確認のままタイムアウト。呼び出し元は保存成功として扱ってよい。
+  }
+
   // ローカルのproject全体をGitHubへ保存（新規 or 更新）。
   // expectedSha: 直前にfetchして知っている現在のリモートSHA（新規作成時はnull/undefined）
   // 戻り値: { ok:true, newSha } または { ok:false, conflict:true } （409時）
@@ -3652,6 +3674,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
         // 次回同期時に再度リネーム処理が走り、削除が再試行される。
       }
     }
+
+    // 保存直後、GitHub側の反映が確認できるまで短時間だけ待つ（体感の「ファイルが消えた」誤認を防ぐ）。
+    await ghWaitForPropagation(cfg, targetFilename, json.content.sha);
 
     return { ok: true, newSha: json.content.sha, filename: targetFilename };
   }
