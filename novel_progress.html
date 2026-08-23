@@ -4969,22 +4969,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
         const p = sorted.find(x => x.id === card.dataset.id);
         if(!p) return;
         if(p.isIdeaBook){
-          // ネタ帳は選択モード（一括操作）の対象外。中央にいる時だけ、カバータップでネタ帳モーダルを開く。
+          // ネタ帳は選択モード（一括操作）の対象外。中央にいる時は、カード全体タップでネタ帳モーダルを開く。
           const offset = parseInt(card.dataset.offset, 10) || 0;
           if(offset === 0){
-            const isCoverTap = !!e.target.closest('[data-role="cover"]');
-            if(isCoverTap) openIdeaBook();
+            openIdeaBook();
             return;
           }
           reelGoTo(reelCenterIndex + offset);
           return;
         }
         if(p.isHelpGuide){
-          // 使い方ガイドも選択モード対象外。中央にいる時だけ、カバータップでガイドモーダルを開く。
+          // 使い方ガイドも選択モード対象外。中央にいる時は、カード全体タップでガイドモーダルを開く。
           const offset = parseInt(card.dataset.offset, 10) || 0;
           if(offset === 0){
-            const isCoverTap = !!e.target.closest('[data-role="cover"]');
-            if(isCoverTap) openHelpGuide();
+            openHelpGuide();
             return;
           }
           reelGoTo(reelCenterIndex + offset);
@@ -4997,13 +4995,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
           return;
         }
         const offset = parseInt(card.dataset.offset, 10) || 0;
-        const isCoverTap = !!e.target.closest('[data-role="cover"]');
         if(offset === 0){
-          // 既に中央のカード：カバー画像タップの時だけ詳細を開く（タイトル部分等は何もしない）
-          if(isCoverTap){
-            const coverEl = card.querySelector('[data-role="cover"]');
-            openDetail(p.id, coverEl);
-          }
+          // 既に中央のカード：カード全体（画像・タイトル・メタ情報含む）タップで詳細を開く
+          // 2026-08-23変更：以前は画像部分のタップのみが対象だったが、カード全体に拡大
+          const coverEl = card.querySelector('[data-role="cover"]');
+          openDetail(p.id, coverEl);
           return;
         }
         reelGoTo(reelCenterIndex + offset);
