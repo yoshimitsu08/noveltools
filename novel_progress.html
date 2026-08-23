@@ -2380,6 +2380,35 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .dropdown-item:last-child { border-bottom:none; }
 .dropdown-item:hover { background:var(--surface); }
 .dropdown-item.danger { color:var(--danger); }
+
+/* 2026-08-23新設：GitHub作品取り込みモーダルのリスト行 */
+.github-import-item {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  width:100%;
+  text-align:left;
+  padding:12px 14px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--text);
+  font-family:var(--font-ui);
+  cursor:pointer;
+  margin-bottom:8px;
+}
+.github-import-item:hover { background:var(--surface); }
+.github-import-item .git-import-title { font-size:0.85rem; font-weight:bold; }
+.github-import-item .git-import-meta { font-size:0.7rem; color:var(--text3); }
+.github-import-item .git-import-badge {
+  display:inline-block;
+  font-size:0.65rem;
+  padding:1px 6px;
+  border-radius:3px;
+  background:var(--c-honbun);
+  color:var(--bg);
+  margin-left:6px;
+}
 .dropdown-divider {
   height:1px;
   background:var(--border);
@@ -2446,6 +2475,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <button type="button" class="dropdown-item" id="menuStorageDetailBtn">📊 ストレージ詳細</button>
       <div class="dropdown-divider"></div>
       <button type="button" class="dropdown-item" id="menuGithubSetupBtn">☁️ GitHub保存の設定</button>
+      <button type="button" class="dropdown-item" id="menuGithubImportBtn">☁️ GitHubから作品を取り込む</button>
     </div>
     <div class="dropdown-menu" id="dashSortSubmenu" style="left:0; right:auto;">
       <button type="button" class="dropdown-item" data-sort="pinned">優先順（ピン留め優先）</button>
@@ -2616,6 +2646,24 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
 <!-- ============ GitHub Sync Toast (2026-08-23新設) ============ -->
 <div class="copy-toast" id="githubSyncToast" style="display:none;"></div>
+
+<!-- ============ GitHub Import (new device) Modal (2026-08-23新設) ============ -->
+<div class="modal-overlay" id="githubImportModalOverlay" style="z-index:510;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>GitHubから作品を取り込む</h2>
+      <button class="modal-close" id="githubImportModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note">
+        GitHub上に保存されている作品の一覧です。タップすると、この端末に新規作品として取り込みます。既にこの端末にある作品と同じものは「更新済み」と表示されます。
+      </div>
+      <div class="detail-section" id="githubImportListBox">
+        <div id="githubImportListText" style="font-size:0.85rem; line-height:1.6; color:var(--text2);">確認中…</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ============ Prompt Template List Modal ============ -->
 <div class="modal-overlay" id="templateListModalOverlay">
@@ -3699,7 +3747,39 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return p._githubSync.lastSyncedUpdatedAt !== p.updatedAt;
   }
 
-  const TEMPLATES_STORAGE_KEY = 'manuscript_prompt_templates_v1';
+  // リポジトリ直下にある全ての同期ファイル（manuscript_sync_*.json）を列挙する。
+  // 新端末での「作品一覧から選んで取り込む」機能用。
+  // 戻り値: [{ filename, id, title }]  ※titleはファイル名から推測した簡易表示用（正確な値は復号後にしか分からない）
+  async function ghListAllSyncFiles(cfg){
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${cfg.pat}`,
+        'Accept': 'application/vnd.github+json'
+      }
+    });
+    if(!res.ok) throw new Error(`GitHub一覧取得エラー（${res.status}）`);
+    const list = await res.json();
+    return list
+      .filter(item => item.type === 'file' && item.name.startsWith('manuscript_sync_'))
+      .map(item => ({ filename: item.name }));
+  }
+
+  // 指定ファイル名の同期ファイルを取得・復号する（IDによる検索を経由しない、ファイル名直指定版）。
+  // 戻り値: { sha, payload } | throws
+  async function ghFetchRemoteByFilename(cfg, filename){
+    const res = await ghApiRequest(cfg, filename, 'GET');
+    if(!res.ok) throw new Error(`GitHub取得エラー（${res.status}）`);
+    const json = await res.json();
+    const contentB64 = json.content.replace(/\n/g, '');
+    const decodedJsonStr = decodeURIComponent(escape(atob(contentB64)));
+    const encryptedPayload = JSON.parse(decodedJsonStr);
+    const plainJsonStr = await ghDecrypt(encryptedPayload, cfg.passphrase);
+    const payload = JSON.parse(plainJsonStr);
+    return { sha: json.sha, payload };
+  }
+
+
   const DEVICE_NAME_STORAGE_KEY = 'manuscript_device_name_v1';
   const LONGPRESS_STORAGE_KEY = 'manuscript_longpress_ms_v1';
   const STAGE_COLORS = { genan:'var(--c-genan)', plot:'var(--c-plot)', honbun:'var(--c-honbun)', kousei:'var(--c-kousei)' };
@@ -6497,6 +6577,98 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ghSyncInProgress = false;
     }
   };
+
+  // ---- GitHub Import (new device向け：作品一覧から選んで取り込む, 2026-08-23新設) ----
+  async function openGithubImportModal(){
+    if(!ghIsConfigured()){
+      alert('先にGitHub保存の設定（ハンバーガーメニュー内）を行ってください。');
+      return;
+    }
+    document.getElementById('dashDropdown').classList.remove('active');
+    document.getElementById('githubImportModalOverlay').classList.add('active');
+    const listEl = document.getElementById('githubImportListText');
+    listEl.textContent = '確認中…';
+
+    const cfg = ghLoadConfig();
+    try {
+      const files = await ghListAllSyncFiles(cfg);
+      if(files.length === 0){
+        listEl.textContent = 'GitHub上にはまだ保存された作品がありません。';
+        return;
+      }
+      // 全件を復号してタイトル・更新日を取得する（数十件程度を想定）
+      const items = [];
+      for(const f of files){
+        try {
+          const remote = await ghFetchRemoteByFilename(cfg, f.filename);
+          items.push({
+            filename: f.filename,
+            sha: remote.sha,
+            id: remote.payload.project.id,
+            title: remote.payload.project.title || '無題',
+            updatedAt: remote.payload.project.updatedAt,
+            payload: remote.payload
+          });
+        } catch(_e){
+          // 個別ファイルの復号失敗（暗号鍵不一致など）はスキップし、他のファイルは表示継続
+          items.push({ filename: f.filename, error: true });
+        }
+      }
+      renderGithubImportList(items);
+    } catch(err){
+      listEl.textContent = `一覧の取得に失敗しました：${err.message}`;
+    }
+  }
+
+  function renderGithubImportList(items){
+    const listEl = document.getElementById('githubImportListText');
+    listEl.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'github-import-item';
+      if(item.error){
+        row.innerHTML = `<div class="git-import-title">⚠️ 復号に失敗：${item.filename}</div><div class="git-import-meta">暗号鍵が異なる可能性があります</div>`;
+        listEl.appendChild(row);
+        return;
+      }
+      const existsLocally = projects.some(x => x.id === item.id);
+      const badge = existsLocally ? '<span class="git-import-badge">この端末にあり</span>' : '';
+      row.innerHTML = `<div class="git-import-title">${item.title}${badge}</div><div class="git-import-meta">最終更新：${ghFormatDateTime(new Date(item.updatedAt).getTime())}</div>`;
+      row.onclick = () => confirmGithubImportItem(item, existsLocally);
+      listEl.appendChild(row);
+    });
+  }
+
+  function confirmGithubImportItem(item, existsLocally){
+    const msg = existsLocally
+      ? `「${item.title}」はこの端末に既にあります。GitHub上の内容で上書きしますか？この端末側の未同期の変更があれば失われます。`
+      : `「${item.title}」をこの端末に新規作品として取り込みます。よろしいですか？`;
+    if(!confirm(msg)) return;
+
+    const incoming = item.payload.project;
+    if(existsLocally){
+      const idx = projects.findIndex(x => x.id === item.id);
+      incoming._githubSync = null;
+      projects[idx] = incoming;
+      ghMarkSynced(projects[idx], item.sha);
+    } else {
+      incoming._githubSync = null;
+      projects.push(incoming);
+      ghMarkSynced(incoming, item.sha);
+    }
+    save();
+    renderGrid();
+    ghShowToast(`☁️「${item.title}」を取り込みました`);
+    document.getElementById('githubImportModalOverlay').classList.remove('active');
+  }
+
+  document.getElementById('menuGithubImportBtn').onclick = openGithubImportModal;
+  document.getElementById('githubImportModalClose').onclick = () => {
+    document.getElementById('githubImportModalOverlay').classList.remove('active');
+  };
+  document.getElementById('githubImportModalOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'githubImportModalOverlay') document.getElementById('githubImportModalOverlay').classList.remove('active');
+  });
 
   document.getElementById('menuImportBtn').onclick = () => {
     document.getElementById('dashDropdown').classList.remove('active');
