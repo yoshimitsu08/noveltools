@@ -2592,7 +2592,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 </div>
 
 <!-- ============ GitHub Sync Status Modal (per-project, 2026-08-23新設) ============ -->
-<div class="modal-overlay" id="githubSyncModalOverlay">
+<div class="modal-overlay" id="githubSyncModalOverlay" style="z-index:510;">
   <div class="modal">
     <div class="modal-header">
       <h2>GitHub保存・同期</h2>
@@ -6369,7 +6369,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(!p) return;
 
     document.getElementById('detailDropdown').classList.remove('active');
-    document.getElementById('detailModalOverlay').classList.remove('active');
     document.getElementById('githubSyncModalOverlay').classList.add('active');
 
     const statusEl = document.getElementById('githubSyncStatusText');
@@ -6414,9 +6413,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
   };
   document.getElementById('githubSyncModalClose').onclick = () => {
     document.getElementById('githubSyncModalOverlay').classList.remove('active');
+    if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId);
   };
   document.getElementById('githubSyncModalOverlay').addEventListener('click', (e) => {
-    if(e.target.id === 'githubSyncModalOverlay') document.getElementById('githubSyncModalOverlay').classList.remove('active');
+    if(e.target.id === 'githubSyncModalOverlay'){
+      document.getElementById('githubSyncModalOverlay').classList.remove('active');
+      if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId);
+    }
   });
 
   let ghSyncInProgress = false;
@@ -6443,6 +6446,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
       ghShowToast('☁️ GitHubに保存しました');
       document.getElementById('githubSyncModalOverlay').classList.remove('active');
+      openDetail(p.id);
     } catch(err){
       alert(`保存に失敗しました：${err.message}`);
     } finally {
@@ -6483,8 +6487,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       renderGrid();
       ghShowToast('☁️ GitHubから取得しました');
       document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      // 詳細モーダルが開いていれば表示を更新
-      if(currentDetailId === p.id) openDetail(p.id);
+      openDetail(p.id);
     } catch(err){
       alert(`取得に失敗しました：${err.message}`);
     } finally {
