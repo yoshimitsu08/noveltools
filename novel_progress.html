@@ -5436,10 +5436,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   function closeDetailAndReturn(){
-    playDetailModalCloseAnimation(() => {
-      currentDetailId = null;
-      renderGrid();
-    });
+    // 2026-08-23修正：history.back()経由に統一。詳細を閉じる＝履歴上「detail」から1段戻る、という扱いにする
+    appNavBack();
   }
 
   // ---------- Image handling (used both on card grid entry point and detail hamburger) ----------
@@ -5806,6 +5804,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const p = projects.find(x=>x.id===id);
     if(!p) return;
 
+    // 2026-08-23新設：履歴に「detail」状態を積む。ただし既にdetail系（詳細/設定/本文/AI連携）から
+    // 戻ってきて詳細を開き直すだけの場合や、GitHub同期モーダル等から詳細に復帰するだけの場合は、
+    // 二重に履歴を積まないようappNavStateがまだ'reel'の時だけ積む。
+    if(appNavState === 'reel'){
+      pushAppNavState('detail');
+    }
+
     document.getElementById('detailTitle').textContent = p.title || '無題';
     updateAuthorDisplay(p);
     document.getElementById('detailProjectIdText').textContent = p.id;
@@ -5988,10 +5993,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // （台紙へのDOM移動ロジックは不要になったため削除）
 
   function closeDetail(){
-    playDetailModalCloseAnimation(() => {
-      currentDetailId = null;
-      renderGrid();
-    });
+    // 2026-08-23修正：history.back()経由に統一し、Androidバックボタンと挙動を一致させる
+    appNavBack();
   }
 
   // ---------- Event bindings ----------
@@ -6967,6 +6970,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentSettingId = id;
     const p = projects.find(x=>x.id===id);
     if(!p) return;
+    pushAppNavState('setting'); // 2026-08-23新設：Androidバック/戻るボタンで詳細へ戻れるよう履歴に積む
     if(!p.sections) p.sections = defaultSections();
     if(!p.plotChapters) p.plotChapters = [];
     document.getElementById('settingWorkTitle').textContent = p.title || '無題';
@@ -7007,9 +7011,61 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   }
 
+  // ================= 画面遷移の履歴管理（2026-08-23新設） =================
+  // 目的：「詳細」「設定プロット」「本文」「AI連携」を開いた状態をブラウザ履歴に積み、
+  //       Android標準の戻るボタン（popstateイベント）でアプリ内を正しく1段階だけ戻れるようにする。
+  //       アプリ内蔵の「戻る」ボタンもすべてhistory.back()を呼ぶだけにして、
+  //       Android標準バックと挙動を完全に一致させる（片方だけ直してズレる事故を防ぐ）。
+  //
+  // 対象スタック：'reel'（何も開いていない状態）→ 'detail' → ('setting' | 'manuscript' | 'aiHub')
+  // 上記以外の既存モーダル（ネタ帳・GitHub同期等）は今回の対象外で、従来通りの開閉のまま。
+
+  let appNavState = 'reel'; // 現在アプリが認識している画面状態（popstateとの整合チェック用）
+  let suppressPopstateHandling = false; // pushState直後にpopstateが誤発火するのを防ぐガード
+
+  function pushAppNavState(viewName){
+    appNavState = viewName;
+    history.pushState({ appView: viewName }, '', location.href);
+  }
+
+  window.addEventListener('popstate', (e) => {
+    if(suppressPopstateHandling) return;
+    const targetView = (e.state && e.state.appView) ? e.state.appView : 'reel';
+    applyAppNavState(targetView, /*fromPopstate=*/true);
+  });
+
+  // targetViewの画面だけを表示する状態に揃える（popstateからも、内部の戻るボタンからも呼ばれる共通処理）
+  function applyAppNavState(targetView, fromPopstate){
+    if(targetView === appNavState) return; // 既にその状態なら何もしない
+    appNavState = targetView;
+
+    if(targetView === 'reel'){
+      // 詳細モーダルを閉じてリールへ
+      playDetailModalCloseAnimation(() => {
+        currentDetailId = null;
+        renderGrid();
+      });
+      switchView('dashboardView');
+    } else if(targetView === 'detail'){
+      // 設定プロット/本文/AI連携から詳細へ戻る
+      switchView('dashboardView');
+      renderGrid();
+      const backId = currentSettingId || currentManuscriptId || currentHubId;
+      openDetail(backId);
+    }
+    // 'setting' / 'manuscript' / 'aiHub' へ是popstateで戻ることは想定していない
+    // （それらは常に「詳細から新規に開く」動線のみのため）
+  }
+
+  // アプリ内蔵の「戻る」操作から呼ぶ共通関数：history.back()を呼ぶだけにして、popstateハンドラに処理を一本化する
+  function appNavBack(){
+    history.back();
+  }
+
   document.getElementById('settingBackBtn').onclick = () => {
-    switchView('dashboardView');
-    renderGrid();
+    // 2026-08-23修正：history.back()経由に統一し、Android標準バックボタンと完全に同じ挙動にする
+    // （実際の画面切り替えはpopstateハンドラ=applyAppNavStateに一本化）
+    appNavBack();
   };
 
   function getCurrentSettingProject(){
@@ -7256,6 +7312,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentManuscriptId = id;
     const p = projects.find(x=>x.id===id);
     if(!p) return;
+    pushAppNavState('manuscript'); // 2026-08-23新設：Androidバック/戻るボタンで詳細へ戻れるよう履歴に積む
     if(!p.manuscript) p.manuscript = {};
     if(!p.plotChapters) p.plotChapters = [];
 
@@ -7269,8 +7326,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   document.getElementById('manuscriptBackBtn').onclick = () => {
-    switchView('dashboardView');
-    renderGrid();
+    // 2026-08-23修正：history.back()経由に統一し、Android標準バックボタンと完全に同じ挙動にする
+    appNavBack();
   };
 
   const ALL_PREVIEW_TAB_ID = '__ALL_PREVIEW__';
@@ -8458,6 +8515,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentHubId = id;
     const p = projects.find(x=>x.id===id);
     if(!p) return;
+    pushAppNavState('aiHub'); // 2026-08-23新設：Androidバック/戻るボタンで詳細へ戻れるよう履歴に積む
     document.getElementById('aiHubWorkTitle').textContent = p.title || '無題';
     hubSource = null;
     hubPurpose = null;
@@ -8491,8 +8549,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   });
 
   document.getElementById('aiHubBackBtn').onclick = () => {
-    switchView('dashboardView');
-    renderGrid();
+    // 2026-08-23修正：history.back()経由に統一し、Android標準バックボタンと完全に同じ挙動にする
+    appNavBack();
   };
 
   function renderHubSourceList(){
@@ -9403,6 +9461,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
   initHelpGuideEvents();
   renderGrid();
   updateStorageUsageDisplay();
+
+  // 2026-08-23新設：アプリ起動時点の履歴エントリを「reel」状態として明示しておく。
+  // これにより、detail/setting/manuscript/aiHubのどこにいてもAndroidバックボタンで
+  // 必ずアプリ内のリール表示に留まり、ブラウザの前のページ（インデックス等）へ
+  // 一気に抜けてしまう事故を防ぐ。
+  history.replaceState({ appView: 'reel' }, '', location.href);
 
 })();
 </script>
