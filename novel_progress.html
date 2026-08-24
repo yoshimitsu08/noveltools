@@ -7037,6 +7037,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // targetViewの画面だけを表示する状態に揃える（popstateからも、内部の戻るボタンからも呼ばれる共通処理）
   function applyAppNavState(targetView, fromPopstate){
     if(targetView === appNavState) return; // 既にその状態なら何もしない
+    const fromView = appNavState; // 遷移前の状態を記録（'detail'の戻り先特定に使う）
     appNavState = targetView;
 
     if(targetView === 'reel'){
@@ -7050,10 +7051,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // 設定プロット/本文/AI連携から詳細へ戻る
       switchView('dashboardView');
       renderGrid();
-      const backId = currentSettingId || currentManuscriptId || currentHubId;
+      // 2026-08-23修正：遷移前の状態(fromView)を見て戻り先IDを特定する（複数IDのOR推測をやめ、誤爆を防止）
+      let backId = currentDetailId;
+      if(fromView === 'setting') backId = currentSettingId;
+      else if(fromView === 'manuscript') backId = currentManuscriptId;
+      else if(fromView === 'aiHub') backId = currentHubId;
       openDetail(backId);
+    } else if(targetView === 'manuscript'){
+      // Sentence Selectorから本文へ戻る
+      switchView('manuscriptView');
+      const p = projects.find(x=>x.id===currentSelectorProjectId);
+      if(p){ renderChapterTabs(p); renderManuscriptEditArea(p); }
     }
-    // 'setting' / 'manuscript' / 'aiHub' へ是popstateで戻ることは想定していない
+    // 'setting' / 'aiHub' へpopstateで戻ることは想定していない
     // （それらは常に「詳細から新規に開く」動線のみのため）
   }
 
@@ -7567,6 +7577,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentSelectorChapterId = chapterId;
     selectorEditingCardId = null;
     selectorCompareState = null; // 章を開き直したら比較パネルは閉じる
+    pushAppNavState('selector'); // 2026-08-23新設：Androidバック/戻るボタンで本文へ戻れるよう履歴に積む
 
     const p = projects.find(x=>x.id===projectId);
     const ch = (p.plotChapters||[]).find(c => c.id === chapterId);
@@ -7585,9 +7596,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   document.getElementById('selectorBackBtn').onclick = () => {
-    switchView('manuscriptView');
-    const p = projects.find(x=>x.id===currentSelectorProjectId);
-    if(p){ renderChapterTabs(p); renderManuscriptEditArea(p); }
+    // 2026-08-23修正：history.back()経由に統一し、Android標準バックボタンと完全に同じ挙動にする
+    appNavBack();
   };
 
   function selectorColorOf(seriesId, selector){
