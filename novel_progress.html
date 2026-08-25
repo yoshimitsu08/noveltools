@@ -6958,9 +6958,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     openAiHubView(id);
   };
 
+  // 2026-08-26修正（往復不可バグ対応・第2弾）：画像プロンプトを開く際、detailを閉じたことを
+  // imagePromptOpenedFromDetailIdに記録しておく。これを見て、画像プロンプトが閉じるタイミングで
+  // detailModalOverlayをopenDetailで明示的に復元する（下のopenImagePromptModal内で対応）。
   document.getElementById('openImagePromptBtn').onclick = () => {
     const id = currentDetailId;
     document.getElementById('detailModalOverlay').classList.remove('active');
+    imagePromptOpenedFromDetailId = id;
     openImagePromptModal(id);
   };
 
@@ -7073,6 +7077,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
         if(swapBackEl) swapBackEl.classList.add('active');
         // 元のモーダルを開き直したので、スタック上も復元しておく
         if(trackedModalStack.indexOf(swapBackId) === -1) trackedModalStack.push(swapBackId);
+      }
+
+      // 2026-08-26新設（往復不可バグ対応・第2弾）：画像プロンプトはdetailModalOverlayを
+      // 閉じてから開かれるが、detailModalOverlayは汎用モーダル履歴スタックの監視対象外
+      // （上記の理由と同様）のため、swapBackId方式には乗らない。専用フラグ
+      // imagePromptOpenedFromDetailIdを見て、openDetailで明示的に復元する。
+      if(overlayId === 'imagePromptModalOverlay' && imagePromptOpenedFromDetailId){
+        const backId = imagePromptOpenedFromDetailId;
+        imagePromptOpenedFromDetailId = null;
+        openDetail(backId, null, true); // skipHistoryPush=true：履歴は既にこのdetailの状態にある
       }
 
       // 2026-08-23修正：MutationObserverのコールバックは非同期に発火するため、
@@ -9305,6 +9319,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // ================= Image Prompt Editor =================
   let currentImagePromptProjectId = null;
+  // 2026-08-26新設（往復不可バグ対応・第2弾）：画像プロンプトを開いた際に
+  // detailModalOverlayを閉じてきた場合、そのproject idをここに記録する。
+  // detailModalOverlayは汎用モーダル履歴スタックの監視対象外のため、
+  // このフラグで「閉じたら復元する」対応関係を明示的に管理する。
+  let imagePromptOpenedFromDetailId = null;
 
   function openImagePromptModal(id){
     const p = projects.find(x=>x.id===id);
@@ -9318,11 +9337,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('imagePromptModalOverlay').classList.add('active');
   }
 
+  // 2026-08-26修正（往復不可バグ対応・第2弾）：×ボタン・背景タップも、Androidバックと
+  // 同じhistory.back()経由に統一。こうすることで「閉じたらdetailModalOverlayを復元する」
+  // 処理をapplyAppNavState側の1箇所に一本化でき、3つの閉じ方すべてに漏れなく効く。
   document.getElementById('imagePromptModalClose').onclick = () => {
-    document.getElementById('imagePromptModalOverlay').classList.remove('active');
+    appNavBack();
   };
   document.getElementById('imagePromptModalOverlay').addEventListener('click', (e) => {
-    if(e.target.id === 'imagePromptModalOverlay') document.getElementById('imagePromptModalOverlay').classList.remove('active');
+    if(e.target.id === 'imagePromptModalOverlay') appNavBack();
   });
 
   document.getElementById('imagePromptMainTextarea').addEventListener('input', (e) => {
