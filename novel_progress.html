@@ -7040,6 +7040,22 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const fromView = appNavState; // 遷移前の状態を記録（'detail'の戻り先特定に使う）
     appNavState = targetView;
 
+    // 2026-08-23新設：直前が個別モーダル（'modal:xxx'）だった場合は、そのモーダルを閉じるだけでよい。
+    // 他の画面遷移（reel/detail/manuscript間）は起こさない。
+    if(fromView && fromView.indexOf('modal:') === 0){
+      const overlayId = fromView.slice('modal:'.length);
+      const idx = trackedModalStack.indexOf(overlayId);
+      if(idx !== -1) trackedModalStack.splice(idx, 1);
+      modalStackSuppress = true;
+      const overlayEl = document.getElementById(overlayId);
+      if(overlayEl) overlayEl.classList.remove('active');
+      // 2026-08-23修正：MutationObserverのコールバックは非同期に発火するため、
+      // 同期的にsuppressをfalseへ戻すとガードが効かない。setTimeoutで確実に
+      // observerのコールバック実行後までsuppressを維持し、誤検知を防ぐ。
+      setTimeout(() => { modalStackSuppress = false; }, 0);
+      return; // モーダルを閉じるだけで、下の画面（reel/detail等）はそのまま
+    }
+
     if(targetView === 'reel'){
       // 詳細モーダルを閉じてリールへ
       playDetailModalCloseAnimation(() => {
@@ -7070,6 +7086,76 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // アプリ内蔵の「戻る」操作から呼ぶ共通関数：history.back()を呼ぶだけにして、popstateハンドラに処理を一本化する
   function appNavBack(){
     history.back();
+  }
+
+  // ================= 汎用モーダル履歴スタック（2026-08-23新設） =================
+  // 目的：GitHub同期・ネタ帳・テンプレート編集・画像プロンプト等、詳細画面より細かい
+  //       個別モーダル（.modal-overlay）についても、Androidバックボタンで
+  //       「開いた時と逆順に、一番上のモーダルから1つずつ閉じる」動作にする。
+  // 方式：既存の classList.add/remove('active') はそのまま一切変更せず、
+  //       MutationObserverでその変化を監視して履歴スタックに反映する（既存コードへの影響ゼロ）。
+  // 対象外：detailModalOverlay（既存のdetail/setting/manuscript/selector/aiHub専用ロジックで管理済み）
+  //
+  // バッチ処理について：テンプレート一覧↔編集のように「1つのクリックハンドラ内でモーダルAを閉じて
+  // モーダルBを開く」ようなすげ替えパターンが複数箇所ある。これをremove/addそれぞれ別々に処理すると
+  // 余分な履歴操作が発生してしまうため、同期処理が終わった直後（queueMicrotask）に
+  // 変化をまとめて1回だけ判定する。
+
+  const trackedModalStack = []; // 現在開いている追跡対象モーダルのidを開いた順に積む
+  let modalStackSuppress = false; // popstateによる自発的なclose処理中、Observerの二重反応を防ぐガード
+  let modalBatchScheduled = false; // バッチ判定が既に予約済みかどうか
+
+  function initModalHistoryTracking(){
+    const overlays = Array.from(document.querySelectorAll('.modal-overlay'))
+      .filter(el => el.id !== 'detailModalOverlay'); // 詳細は専用ロジックで管理済みのため対象外
+
+    const observer = new MutationObserver(() => {
+      if(modalStackSuppress) return;
+      if(modalBatchScheduled) return;
+      modalBatchScheduled = true;
+      queueMicrotask(() => {
+        modalBatchScheduled = false;
+        processModalStackBatch(overlays);
+      });
+    });
+
+    overlays.forEach(overlay => {
+      observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+
+  // 同期処理がひと通り終わった時点でのactive状態と、直前のスタックとの差分をまとめて反映する
+  function processModalStackBatch(overlays){
+    const nowActive = overlays.filter(el => el.classList.contains('active')).map(el => el.id);
+    const wasActive = trackedModalStack.slice();
+
+    const opened = nowActive.filter(id => wasActive.indexOf(id) === -1);
+    const closed = wasActive.filter(id => nowActive.indexOf(id) === -1);
+
+    if(opened.length === 0 && closed.length === 0) return;
+
+    // 閉じられた分をスタックから除去
+    closed.forEach(id => {
+      const idx = trackedModalStack.indexOf(id);
+      if(idx !== -1) trackedModalStack.splice(idx, 1);
+    });
+    // 新規に開かれた分をスタックへ追加（DOM上の出現順は問わず、判定順でよい）
+    opened.forEach(id => trackedModalStack.push(id));
+
+    if(opened.length > 0){
+      // 何か新しく開いていれば、最終的に一番上にあるモーダルの状態を1回だけ履歴に積む
+      // （closeとopenが同時に起きても、ユーザーから見た最終状態は「Bが開いている」の1段階のため）
+      pushAppNavState('modal:' + trackedModalStack[trackedModalStack.length - 1]);
+    } else if(closed.length > 0){
+      // 新規オープンなしで、純粋に閉じただけ（×ボタン等）の場合のみ、履歴を1つ戻す
+      const wasTop = 'modal:' + wasActive[wasActive.length - 1];
+      if(appNavState === wasTop){
+        appNavState = trackedModalStack.length
+          ? 'modal:' + trackedModalStack[trackedModalStack.length - 1]
+          : (currentDetailId ? 'detail' : 'reel');
+        history.back();
+      }
+    }
   }
 
   document.getElementById('settingBackBtn').onclick = () => {
@@ -9469,6 +9555,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   initReelInteraction();
   initCoverPositionDrag();
   initHelpGuideEvents();
+  initModalHistoryTracking(); // 2026-08-23新設：個別モーダル群のAndroidバック対応
   renderGrid();
   updateStorageUsageDisplay();
 
