@@ -5799,15 +5799,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // 2026-08-21変更：originEl（拡大の起点となるDOM要素）を渡すと、その位置・サイズから
   // モーダルが拡大して現れる演出になる。省略時は中央にフェードインする従来の見た目にフォールバックする。
-  function openDetail(id, originEl){
+  //
+  // 2026-08-26修正（往復不可バグ対応）：第3引数skipHistoryPushを新設。
+  // 旧実装は「appNavStateが'reel'の時だけ履歴に積む」という間接判定だったため、
+  // GitHub同期モーダルを閉じて詳細に復帰する等、appNavStateが'reel'以外の状態から
+  // openDetailが呼ばれるケース（＝作られた当初は想定されていなかった呼び出し方）で、
+  // 「detail」が履歴に積まれないまま次のモーダル（画像プロンプト等）が積まれてしまい、
+  // Androidバックを押すと詳細を素通りしてリールまで戻ってしまう不具合の原因になっていた。
+  // 呼び出し側が「これは履歴操作が要らない（＝単なる詳細の開き直し）」と分かっている場合は、
+  // openDetail(id, originEl, true) のように明示的に渡すことで、間接判定をやめて確実に制御する。
+  function openDetail(id, originEl, skipHistoryPush){
     currentDetailId = id;
     const p = projects.find(x=>x.id===id);
     if(!p) return;
 
-    // 2026-08-23新設：履歴に「detail」状態を積む。ただし既にdetail系（詳細/設定/本文/AI連携）から
-    // 戻ってきて詳細を開き直すだけの場合や、GitHub同期モーダル等から詳細に復帰するだけの場合は、
-    // 二重に履歴を積まないようappNavStateがまだ'reel'の時だけ積む。
-    if(appNavState === 'reel'){
+    // 履歴に「detail」状態を積む。skipHistoryPushがtrueの場合（呼び出し側が
+    // 「detailは既に履歴上にある／今回は積む必要がない」と明示している場合）は何もしない。
+    if(!skipHistoryPush && appNavState === 'reel'){
       pushAppNavState('detail');
     }
 
@@ -6512,12 +6520,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
   };
   document.getElementById('githubSyncModalClose').onclick = () => {
     document.getElementById('githubSyncModalOverlay').classList.remove('active');
-    if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId);
+    // 2026-08-26修正：GitHub同期モーダルは汎用モーダル履歴スタックの管理下にあり、
+    // detailは既に履歴上に積まれたまま（下に隠れていただけ）のため、二重に積まない。
+    if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId, null, /*skipHistoryPush=*/true);
   };
   document.getElementById('githubSyncModalOverlay').addEventListener('click', (e) => {
     if(e.target.id === 'githubSyncModalOverlay'){
       document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId);
+      if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId, null, /*skipHistoryPush=*/true);
     }
   });
 
@@ -6560,7 +6570,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
       ghShowToast('☁️ GitHubに保存しました');
       document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      openDetail(p.id);
+      openDetail(p.id, null, /*skipHistoryPush=*/true);
     } catch(err){
       alert(`保存に失敗しました：${err.message}`);
     } finally {
@@ -6601,7 +6611,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       renderGrid();
       ghShowToast('☁️ GitHubから取得しました');
       document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      openDetail(p.id);
+      openDetail(p.id, null, /*skipHistoryPush=*/true);
     } catch(err){
       alert(`取得に失敗しました：${err.message}`);
     } finally {
@@ -6960,7 +6970,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     p.pinned = willPin;
     p.updatedAt = Date.now();
     save();
-    openDetail(p.id);
+    // 2026-08-26：detailモーダルを開いたまま中身だけ再描画するケースのため履歴操作は不要（明示化）
+    openDetail(p.id, null, /*skipHistoryPush=*/true);
   };
 
   // ================= Setting/Plot Editor View =================
@@ -7049,11 +7060,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
       modalStackSuppress = true;
       const overlayEl = document.getElementById(overlayId);
       if(overlayEl) overlayEl.classList.remove('active');
+
+      // 2026-08-26新設（往復不可バグ対応）：このモーダルが「すげ替え」で開かれたものだった場合
+      // （例：テンプレート編集は一覧を閉じて開かれた）、対応する元のモーダルを再度開く。
+      // これが無いと、テンプレート一覧⇄編集のように「編集を閉じても一覧が開き直されない」＝
+      // Androidバックを押すと一覧を素通りしてリールまで飛んでしまう不具合になる。
+      const swapBackId = modalSwapOrigin[overlayId];
+      if(swapBackId){
+        delete modalSwapOrigin[overlayId];
+        const swapBackEl = document.getElementById(swapBackId);
+        if(swapBackEl) swapBackEl.classList.add('active');
+        // 元のモーダルを開き直したので、スタック上も復元しておく
+        if(trackedModalStack.indexOf(swapBackId) === -1) trackedModalStack.push(swapBackId);
+      }
+
       // 2026-08-23修正：MutationObserverのコールバックは非同期に発火するため、
       // 同期的にsuppressをfalseへ戻すとガードが効かない。setTimeoutで確実に
       // observerのコールバック実行後までsuppressを維持し、誤検知を防ぐ。
       setTimeout(() => { modalStackSuppress = false; }, 0);
-      return; // モーダルを閉じるだけで、下の画面（reel/detail等）はそのまま
+      return; // モーダルを閉じる（必要ならすげ替え元を開き直す）だけで、下の画面（reel/detail等）はそのまま
     }
 
     if(targetView === 'reel'){
@@ -7105,6 +7130,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let modalStackSuppress = false; // popstateによる自発的なclose処理中、Observerの二重反応を防ぐガード
   let modalBatchScheduled = false; // バッチ判定が既に予約済みかどうか
 
+  // 2026-08-26新設（往復不可バグ対応）：
+  // 「モーダルAを閉じてモーダルBを開く」というすげ替えが起きた際、
+  // 「Bは、閉じられたAの代わりに開かれたものである」という対応関係を記録しておくマップ。
+  // key=開かれた側のoverlay id、value=同時に閉じられた側のoverlay id。
+  // Androidバックでこの後Bを閉じる際、ここに記録があれば「Aを再度開く」処理につなげる。
+  // テンプレート一覧⇄編集のように、逆方向のすげ替え（編集→一覧）で
+  // 「編集を閉じても一覧が開き直されない」不具合の原因となっていた部分の対策。
+  const modalSwapOrigin = {};
+
   function initModalHistoryTracking(){
     const overlays = Array.from(document.querySelectorAll('.modal-overlay'))
       .filter(el => el.id !== 'detailModalOverlay'); // 詳細は専用ロジックで管理済みのため対象外
@@ -7143,6 +7177,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
     opened.forEach(id => trackedModalStack.push(id));
 
     if(opened.length > 0){
+      // 2026-08-26新設：openedとclosedが同時に発生した＝「すげ替え」の場合、
+      // 新しく開いたモーダルに対して「閉じられた側」を対応関係として記録しておく。
+      // （複数同時のケースは想定しないため、先頭同士を対応させれば十分）
+      //
+      // ただし、opened[0]自身が「以前、誰かのために“代わりに開かれた”モーダル」であり、
+      // かつ今回closed[0]がその"元になったモーダル"である場合
+      // （＝テンプレート一覧⇄編集のように双方向のすげ替えがある組み合わせで、
+      // 　いま逆方向に戻ってきているケース）は、ここで新たに記録を作らない。
+      // 作ってしまうと「一覧→編集→（保存で）一覧に戻る→Androidバックで編集が復活する」
+      // という、直したはずの箇所とは別の往復不可バグを新たに生んでしまうため。
+      const closedWasSwapTarget = closed.length > 0 &&
+        modalSwapOrigin[closed[0]] === opened[0];
+      if(closed.length > 0 && !closedWasSwapTarget){
+        modalSwapOrigin[opened[0]] = closed[0];
+      }
+      if(closedWasSwapTarget){
+        // 逆方向のすげ替え（子→親に戻る動き）なので、子側の記録自体を消しておく
+        delete modalSwapOrigin[closed[0]];
+      }
       // 何か新しく開いていれば、最終的に一番上にあるモーダルの状態を1回だけ履歴に積む
       // （closeとopenが同時に起きても、ユーザーから見た最終状態は「Bが開いている」の1段階のため）
       pushAppNavState('modal:' + trackedModalStack[trackedModalStack.length - 1]);
