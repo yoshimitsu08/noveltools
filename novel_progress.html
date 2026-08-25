@@ -1543,6 +1543,32 @@ h1 .mark { color:var(--accent); font-style:italic; }
   overflow-y:hidden;
   min-height:80px;
 }
+/* 2026-08-26新設：章カード等の欄を「タップするまではただの表示（ラベル）、
+   タップした瞬間だけテキストボックス化」する方式。長文が多数並ぶ画面で、
+   毎回全欄のオートリサイズ計算が走ることによる体感の重さを解消するため。
+   見た目はtextareaと極力揃え、切り替わったことに違和感がないようにする。 */
+.char-field-label-display {
+  width:100%;
+  min-height:80px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:8px 10px;
+  color:var(--text);
+  font-family:var(--font-ui);
+  font-size:0.76rem;
+  line-height:1.5;
+  white-space:pre-wrap;
+  word-break:break-word;
+  cursor:text;
+  box-sizing:border-box;
+}
+.char-field-label-display.is-empty {
+  color:var(--text3);
+}
+.char-field-label-display:hover {
+  border-color:var(--accent);
+}
 .add-char-btn {
   width:100%;
   font-family:var(--font-ui);
@@ -4802,6 +4828,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // getValue / setValue: 対象データの読み書き
   // placeholder: 空欄時に薄く表示する案内文
   // onCommit: 編集を終えて確定した時に呼ばれるコールバック（保存処理をここで行う）
+  // 2026-08-26新設：ラベル表示時、句点（。）の直後に改行を入れて読みやすくする。
+  // textareaでの編集内容そのもの（保存データ）は変更せず、あくまで表示時の見た目だけの処理。
+  function formatLabelTextWithLineBreaks(text){
+    return escapeHTML(text)
+      .replace(/\n/g, '<br>')
+      .replace(/。/g, '。<br>')
+      .replace(/(<br>)+$/, ''); // 末尾に余計な空行ができるのを防ぐ
+  }
+
   function makeInlineEditableField(container, getValue, setValue, placeholder, onCommit){
     const labelEl = document.createElement('div');
     labelEl.className = 'char-field-label-display';
@@ -4810,7 +4845,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const renderLabel = () => {
       const v = getValue();
       if(v){
-        labelEl.textContent = v;
+        labelEl.innerHTML = formatLabelTextWithLineBreaks(v);
         labelEl.classList.remove('is-empty');
       } else {
         labelEl.textContent = placeholder || 'タップして入力';
