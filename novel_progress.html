@@ -4326,9 +4326,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   function saveTemplates(){
-    try { localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(promptTemplates)); }
-    catch(_e){ alert('テンプレートの保存に失敗しました。'); }
+    console.log('[DEBUG-saveTemplates] START', performance.now());
+    try {
+      localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(promptTemplates));
+      console.log('[DEBUG-saveTemplates] setItem OK', performance.now());
+    }
+    catch(_e){
+      console.log('[DEBUG-saveTemplates] CAUGHT ERROR', _e, performance.now());
+      alert('テンプレートの保存に失敗しました。');
+    }
     updateStorageUsageDisplay();
+    console.log('[DEBUG-saveTemplates] END', performance.now());
   }
 
   // ---------- Storage usage ----------
@@ -7035,11 +7043,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let suppressPopstateHandling = false; // pushState直後にpopstateが誤発火するのを防ぐガード
 
   function pushAppNavState(viewName){
+    console.log('[DEBUG-nav] pushAppNavState', performance.now(), viewName);
     appNavState = viewName;
     history.pushState({ appView: viewName }, '', location.href);
   }
 
   window.addEventListener('popstate', (e) => {
+    console.log('[DEBUG-nav] popstate fired', performance.now(), 'suppress=', suppressPopstateHandling, 'state=', JSON.stringify(e.state));
     if(suppressPopstateHandling) return;
     const targetView = (e.state && e.state.appView) ? e.state.appView : 'reel';
     applyAppNavState(targetView, /*fromPopstate=*/true);
@@ -7047,7 +7057,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // targetViewの画面だけを表示する状態に揃える（popstateからも、内部の戻るボタンからも呼ばれる共通処理）
   function applyAppNavState(targetView, fromPopstate){
-    if(targetView === appNavState) return; // 既にその状態なら何もしない
+    console.log('[DEBUG-nav] applyAppNavState called', performance.now(), 'targetView=', targetView, 'current appNavState=', appNavState, 'fromPopstate=', fromPopstate);
+    if(targetView === appNavState){ console.log('[DEBUG-nav] applyAppNavState: no-op (same state)'); return; } // 既にその状態なら何もしない
     const fromView = appNavState; // 遷移前の状態を記録（'detail'の戻り先特定に使う）
     appNavState = targetView;
 
@@ -7166,7 +7177,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const opened = nowActive.filter(id => wasActive.indexOf(id) === -1);
     const closed = wasActive.filter(id => nowActive.indexOf(id) === -1);
 
-    if(opened.length === 0 && closed.length === 0) return;
+    console.log('[DEBUG-modalBatch] START', performance.now(), {
+      nowActive, wasActive, opened, closed,
+      modalSwapOrigin: JSON.stringify(modalSwapOrigin),
+      appNavState
+    });
+
+    if(opened.length === 0 && closed.length === 0){
+      console.log('[DEBUG-modalBatch] no change, return');
+      return;
+    }
 
     // 閉じられた分をスタックから除去
     closed.forEach(id => {
@@ -7196,19 +7216,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
         // 逆方向のすげ替え（子→親に戻る動き）なので、子側の記録自体を消しておく
         delete modalSwapOrigin[closed[0]];
       }
+      console.log('[DEBUG-modalBatch] opened-branch', {
+        closedWasSwapTarget,
+        modalSwapOriginAfter: JSON.stringify(modalSwapOrigin),
+        pushing: 'modal:' + trackedModalStack[trackedModalStack.length - 1]
+      });
       // 何か新しく開いていれば、最終的に一番上にあるモーダルの状態を1回だけ履歴に積む
       // （closeとopenが同時に起きても、ユーザーから見た最終状態は「Bが開いている」の1段階のため）
       pushAppNavState('modal:' + trackedModalStack[trackedModalStack.length - 1]);
     } else if(closed.length > 0){
       // 新規オープンなしで、純粋に閉じただけ（×ボタン等）の場合のみ、履歴を1つ戻す
       const wasTop = 'modal:' + wasActive[wasActive.length - 1];
+      console.log('[DEBUG-modalBatch] closed-only-branch', {
+        wasTop, appNavState, willCallHistoryBack: (appNavState === wasTop)
+      });
       if(appNavState === wasTop){
         appNavState = trackedModalStack.length
           ? 'modal:' + trackedModalStack[trackedModalStack.length - 1]
           : (currentDetailId ? 'detail' : 'reel');
+        console.log('[DEBUG-modalBatch] CALLING history.back()', performance.now(), 'newAppNavState=', appNavState);
         history.back();
       }
     }
+    console.log('[DEBUG-modalBatch] END', performance.now());
   }
 
   document.getElementById('settingBackBtn').onclick = () => {
