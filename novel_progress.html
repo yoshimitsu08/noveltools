@@ -4793,6 +4793,64 @@ h1 .mark { color:var(--accent); font-style:italic; }
     requestAnimationFrame(resize);
   }
 
+  // 2026-08-26新設：「タップするまではただの表示（ラベル）、タップした瞬間だけ
+  // テキストボックス化」する欄を作る共通関数。設定プロット等、長文が並ぶ画面で、
+  // 表示のたびに全欄へオートリサイズ計算をかけると重くなるため、
+  // 「今まさに編集している1個だけ」に計算対象を絞るのが狙い。
+  //
+  // container: この関数がdiv（ラベル）を配置する親要素
+  // getValue / setValue: 対象データの読み書き
+  // placeholder: 空欄時に薄く表示する案内文
+  // onCommit: 編集を終えて確定した時に呼ばれるコールバック（保存処理をここで行う）
+  function makeInlineEditableField(container, getValue, setValue, placeholder, onCommit){
+    const labelEl = document.createElement('div');
+    labelEl.className = 'char-field-label-display';
+    labelEl.tabIndex = 0; // キーボード操作でもタップと同様に選べるように
+
+    const renderLabel = () => {
+      const v = getValue();
+      if(v){
+        labelEl.textContent = v;
+        labelEl.classList.remove('is-empty');
+      } else {
+        labelEl.textContent = placeholder || 'タップして入力';
+        labelEl.classList.add('is-empty');
+      }
+    };
+    renderLabel();
+
+    const startEdit = () => {
+      const ta = document.createElement('textarea');
+      ta.className = 'auto-resize-textarea';
+      ta.value = getValue();
+      ta.placeholder = placeholder || '';
+      labelEl.replaceWith(ta);
+      enableAutoResize(ta);
+      ta.focus();
+      // フォーカスを末尾に置く（先頭にカーソルが飛ぶと編集しづらいため）
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+
+      const commitAndRestore = () => {
+        setValue(ta.value);
+        if(onCommit) onCommit();
+        renderLabel();
+        ta.replaceWith(labelEl);
+      };
+      ta.addEventListener('blur', commitAndRestore, { once: true });
+    };
+
+    labelEl.addEventListener('click', startEdit);
+    labelEl.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){
+        e.preventDefault();
+        startEdit();
+      }
+    });
+
+    container.appendChild(labelEl);
+    return labelEl;
+  }
+
   function getSorted(){
     const mode = document.getElementById('sortSelect').value;
     const arr = [...projects];
@@ -7259,10 +7317,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <input type="text" class="chapter-title-input" placeholder="章タイトル（任意）" value="${escapeHTML(ch.title)}">
         <button type="button" class="chapter-del-btn" title="この章を削除">🗑</button>
       </div>
-      <div class="char-field"><label>出来事</label><textarea class="auto-resize-textarea" placeholder="この章で起きる出来事" data-f="event">${escapeHTML(ch.event)}</textarea></div>
-      <div class="char-field"><label>登場人物の心情</label><textarea class="auto-resize-textarea" placeholder="主要人物の心の動き" data-f="feeling">${escapeHTML(ch.feeling)}</textarea></div>
-      <div class="char-field"><label>この章が見せたいもの</label><textarea class="auto-resize-textarea" placeholder="読者に伝えたいテーマ・見せ場" data-f="reveal">${escapeHTML(ch.reveal)}</textarea></div>
-      <div class="char-field"><label>その他</label><textarea class="auto-resize-textarea" placeholder="補足メモ" data-f="other">${escapeHTML(ch.other)}</textarea></div>
+      <div class="char-field"><label>出来事</label><div class="cf-slot" data-f="event"></div></div>
+      <div class="char-field"><label>登場人物の心情</label><div class="cf-slot" data-f="feeling"></div></div>
+      <div class="char-field"><label>この章が見せたいもの</label><div class="cf-slot" data-f="reveal"></div></div>
+      <div class="char-field"><label>その他</label><div class="cf-slot" data-f="other"></div></div>
       <div class="field" style="margin-top:10px;">
         <label>この章の目安文字数（空欄なら1500字）</label>
         <input type="number" class="chapter-target-length-input" placeholder="例：2000" min="0" step="100" value="${ch.targetLength !== null && ch.targetLength !== undefined ? ch.targetLength : ''}">
@@ -7286,13 +7344,24 @@ h1 .mark { color:var(--accent); font-style:italic; }
       p.updatedAt = Date.now();
       save();
     });
-    card.querySelectorAll('textarea[data-f]').forEach(ta => {
-      ta.oninput = () => {
-        ch[ta.dataset.f] = ta.value;
-        p.updatedAt = Date.now();
-        save();
-      };
-      enableAutoResize(ta);
+    // 2026-08-26新設：出来事・心情・見せたいもの・その他の4欄を、タップするまでは
+    // ただの表示（ラベル）にしておく方式に変更。表示のたびに4欄すべてへ重いオートリサイズ
+    // 計算をかけていたのが体感の重さの原因だったため、編集中の欄だけに計算対象を絞る。
+    const fieldPlaceholders = {
+      event: 'この章で起きる出来事',
+      feeling: '主要人物の心の動き',
+      reveal: '読者に伝えたいテーマ・見せ場',
+      other: '補足メモ'
+    };
+    card.querySelectorAll('.cf-slot').forEach(slot => {
+      const f = slot.dataset.f;
+      makeInlineEditableField(
+        slot,
+        () => ch[f] || '',
+        (v) => { ch[f] = v; },
+        fieldPlaceholders[f],
+        () => { p.updatedAt = Date.now(); save(); }
+      );
     });
     return card;
   }
