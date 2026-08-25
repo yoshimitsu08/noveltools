@@ -4332,7 +4332,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       console.log('[DEBUG-saveTemplates] setItem OK', performance.now());
     }
     catch(_e){
-      console.log('[DEBUG-saveTemplates] CAUGHT ERROR', _e, performance.now());
+      console.log('[DEBUG-saveTemplates] CAUGHT ERROR name=', _e && _e.name, 'message=', _e && _e.message, 'stack=', _e && _e.stack);
       alert('テンプレートの保存に失敗しました。');
     }
     updateStorageUsageDisplay();
