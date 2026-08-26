@@ -5325,10 +5325,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
     reelVelocityTracker = [];
   }
   // px/ms の瞬間速度を返す（サンプル不足時は0）
+  // 2026-08-26修正：従来は「最初と最後の2サンプルだけ」で速度を計算していたが、
+  // 指を離す瞬間のわずかな跳ね返り・センサーのブレで最後の1サンプルだけ座標が
+  // 逆方向にずれることがあり、それだけで速度の符号（＝送る方向）が反転してしまう
+  // 不具合があった（「一瞬だけ下に動かすと逆に上へ回転する」の原因のひとつ）。
+  // 対策として、末尾のサンプルが直前のサンプルと比べて明らかに逆方向（かつ小さい動き＝
+  // 跳ね返り由来と考えられる）場合は、そのサンプルを除外してから計算する。
   function reelComputeVelocity(){
-    if(reelVelocityTracker.length < 2) return 0;
-    const first = reelVelocityTracker[0];
-    const last = reelVelocityTracker[reelVelocityTracker.length - 1];
+    let samples = reelVelocityTracker;
+    if(samples.length >= 3){
+      const last = samples[samples.length - 1];
+      const prev = samples[samples.length - 2];
+      const first = samples[0];
+      const overallDir = last.y - first.y; // サンプル全体でみた大まかな向き
+      const lastStepDir = last.y - prev.y; // 最後の1歩の向き
+      // 全体の向きと最後の1歩の向きが逆で、かつ最後の1歩がごく小さい動き（跳ね返りらしき動き）なら、
+      // 末尾サンプルをノイズとみなして除外する。
+      if(overallDir !== 0 && Math.sign(overallDir) !== Math.sign(lastStepDir) && Math.abs(lastStepDir) < 6){
+        samples = samples.slice(0, -1);
+      }
+    }
+    if(samples.length < 2) return 0;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
     const dt = last.t - first.t;
     if(dt <= 0) return 0;
     return (last.y - first.y) / dt; // 符号：下向きドラッグが正
@@ -5356,11 +5375,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
     cardsToMove = Math.max(1, Math.min(cardsToMove, 4)); // 暴走防止の上限（電光掲示板方式：窓のバッファが前後2枚のため、飛びすぎ防止で4枚までに制限）
 
-    if(reelDragCurrentOffset === 0 && velocity === 0){
-      reelGoTo(reelCenterIndex);
-    } else if(reelDragCurrentOffset > threshold || velocity > 0.05){
+    // 2026-08-26修正：方向判定を「距離優先、距離が閾値未満のときのみ速度で補助判定」に変更。
+    // 従来はreelDragCurrentOffsetとvelocityを「どちらか一方が条件を満たせばOK」というOR条件で
+    // 判定していたため、距離が閾値未満のごく小さな動きでも、ノイズを含みやすい速度の符号だけで
+    // 逆方向へ飛んでしまうことがあった（「一瞬だけ下に動かすと逆に上へ回転する」不具合の原因）。
+    // 距離が閾値を超えている場合は距離の符号を信頼し、閾値未満の場合のみ
+    // 「はっきりしたフリック（速度が一定以上）」であれば速度の符号を使う、という優先順位にする。
+    const FLING_VELOCITY_THRESHOLD = 0.15; // px/ms。この値未満の速度は「フリックではなく誤差」とみなす
+    let dir = 0; // 1=前へ（下スワイプ）, -1=次へ（上スワイプ）, 0=その場に戻る
+    if(reelDragCurrentOffset > threshold){
+      dir = 1;
+    } else if(reelDragCurrentOffset < -threshold){
+      dir = -1;
+    } else if(Math.abs(velocity) > FLING_VELOCITY_THRESHOLD){
+      dir = velocity > 0 ? 1 : -1;
+    }
+
+    if(dir > 0){
       reelGoTo(reelCenterIndex - cardsToMove);
-    } else if(reelDragCurrentOffset < -threshold || velocity < -0.05){
+    } else if(dir < 0){
       reelGoTo(reelCenterIndex + cardsToMove);
     } else {
       reelGoTo(reelCenterIndex);
