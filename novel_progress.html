@@ -7568,6 +7568,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // つまみ（.reorder-handle）を起点にしたドラッグ実装。
   // マウス/タッチどちらもポインターイベントで統一的に扱う。
+  // 修正（2026-08-26）：ポインターイベントを受け取る要素（handle）と、
+  // setPointerCaptureおよびpointermove/pointerup等のリスナーを付ける要素がズレていたため、
+  // 環境によってはドラッグが正しく反応しない不具合があった。すべてhandle側に統一する。
   function attachReorderDragHandlers(){
     const listEl = document.getElementById('reorderList');
     const rows = Array.from(listEl.querySelectorAll('.reorder-row'));
@@ -7576,16 +7579,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const handle = row.querySelector('.reorder-handle');
       handle.onpointerdown = (e) => {
         e.preventDefault();
-        startRowDrag(row, listEl, e.pointerId);
+        startRowDrag(row, handle, listEl, e.pointerId);
       };
     });
   }
 
-  function startRowDrag(row, listEl, pointerId){
+  function startRowDrag(row, handle, listEl, pointerId){
     row.classList.add('dragging');
-    row.setPointerCapture && row.setPointerCapture(pointerId);
-
-    const rowHeight = row.offsetHeight;
+    handle.setPointerCapture && handle.setPointerCapture(pointerId);
 
     const onMove = (e) => {
       const rows = Array.from(listEl.querySelectorAll('.reorder-row:not(.dragging)'));
@@ -7606,16 +7607,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const onUp = () => {
       row.classList.remove('dragging');
-      row.removeEventListener('pointermove', onMove);
-      row.removeEventListener('pointerup', onUp);
-      row.removeEventListener('pointercancel', onUp);
+      handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
       // DOM上の並び順をreorderWorkingListへ反映し、番号ラベルを振り直す
       syncWorkingListFromDom(listEl);
     };
 
-    row.addEventListener('pointermove', onMove);
-    row.addEventListener('pointerup', onUp);
-    row.addEventListener('pointercancel', onUp);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
   }
 
   function syncWorkingListFromDom(listEl){
