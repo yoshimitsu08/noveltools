@@ -5098,7 +5098,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
             openIdeaBook();
             return;
           }
-          reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
+          reelGoTo(reelCenterIndex + offset, true);
           return;
         }
         if(p.isHelpGuide){
@@ -5108,7 +5108,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
             openHelpGuide();
             return;
           }
-          reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
+          reelGoTo(reelCenterIndex + offset, true);
           return;
         }
         if(selectMode){
@@ -5124,59 +5124,122 @@ h1 .mark { color:var(--accent); font-style:italic; }
           openDetail(p.id, coverEl);
           return;
         }
-        reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
+        reelGoTo(reelCenterIndex + offset, true);
       };
     });
   }
 
   // 中央カードのインデックスを切り替える（animate=trueならスナップアニメーション付き）
   // 無限ループ対応：末尾の次は先頭、先頭の前は末尾へ循環する。
-  // startDragOffsetPx: アニメーション開始時点の見た目上のズレ（px）。ドラッグ終了直後に呼ぶ場合は
-  // 「指を離した瞬間のドラッグ量」を渡すことで、そこから自然に最終位置へ動く（試作ファイルの
-  // goTo()と同じ考え方）。タップ送り・ホイール等、ドラッグを伴わない場合は0でよい。
-  function reelGoTo(index, animate, startDragOffsetPx){
+  // 2026-08-26再修正：「作り直してから開始位置へ戻す」方式は、画面上の全カードを一律オフセットする
+  // ことになり、範囲の端にいたカードが画面外まで押し出されて「ぶっ飛ぶ」不具合があった。
+  // 試作ファイルの設計に立ち返り、カードは作り直さず、既存カードのoffset（dataset.offset）を
+  // 移動量（delta）分だけシフトし、範囲外に出たものだけ削除・新しく範囲に入るものだけ追加する
+  // 「差分更新」に変更。速度計算は一切使わない点は変わらない。
+  function reelGoTo(index, animate){
     if(animate === undefined) animate = true;
-    if(startDragOffsetPx === undefined) startDragOffsetPx = 0;
     const sorted = getSorted();
     if(sorted.length === 0) return;
     const total = sorted.length;
-    reelCenterIndex = ((index % total) + total) % total;
-    if(animate){
-      reelRebuildCardsAnimated(startDragOffsetPx);
+    const prevCenterIndex = reelCenterIndex;
+    const nextCenterIndex = ((index % total) + total) % total;
+    const delta = reelCircularOffset(nextCenterIndex, prevCenterIndex, total); // 何枚分、どちら向きに進むか
+    reelCenterIndex = nextCenterIndex;
+    if(delta === 0){
+      reelApplyLayout(animate);
     } else {
-      reelRebuildCards();
+      reelShiftCards(delta, animate);
     }
-    reelUpdateBg(sorted[reelCenterIndex]);
+    reelUpdateBg(sorted[nextCenterIndex]);
   }
 
-  // reelRebuildCardsのアニメーション版：新しいcenterIndexを基準にカードを作り直した直後、
-  // 見た目だけ「アニメーション開始位置」（=startDragOffsetPxだけずらした位置）に一旦戻し、
-  // 次フレームでtransitionを効かせながら最終位置(0)へ動かす。
-  // こうすることで、ドラッグ終了直後は「今指を離した位置から自然に収まる」動きになり、
-  // タップ送り等（startDragOffsetPx=0）は「1マス分スライドする」通常の動きになる。
-  function reelRebuildCardsAnimated(startDragOffsetPx){
+  // centerIndexがdelta分動いた際、既存カードのoffsetをシフトし、範囲外に出たカードを削除、
+  // 新しく範囲に入るカードだけを追加する（カードを丸ごと作り直さない差分更新）。
+  function reelShiftCards(delta, animate){
     const track = document.getElementById('reelTrack');
-    reelRebuildCards(); // 新しいcenterIndexを基準にカードを作り直す（この時点で最終位置に配置される）
-    const cards = Array.from(track.querySelectorAll('.reel-card'));
+    const sorted = getSorted();
+    const total = sorted.length;
+    const existing = Array.from(track.querySelectorAll('.reel-card'));
 
-    if(startDragOffsetPx !== 0){
-      // 開始位置（最終位置からstartDragOffsetPxだけずれた位置）に一旦戻す
-      reelPositionCards(startDragOffsetPx);
-      void track.offsetHeight; // 強制reflowで開始位置を確定させる
+    // 1) 既存カードのoffsetをシフトし、範囲外になったものは削除
+    existing.forEach(card => {
+      const newOffset = (parseInt(card.dataset.offset, 10) || 0) - delta;
+      if(Math.abs(newOffset) > REEL_SIDE_COUNT){
+        card.remove();
+      } else {
+        card.dataset.offset = String(newOffset);
+      }
+    });
+
+    // 2) 新しく範囲に入るべきoffset（まだDOMに無いもの）を追加する。
+    // 追加直後は「範囲のさらに外（見えない位置）」に配置し、他のカードと同時にtransitionさせる。
+    const presentOffsets = new Set(Array.from(track.querySelectorAll('.reel-card')).map(c => parseInt(c.dataset.offset, 10)));
+    const newCards = [];
+    for(let offset = -REEL_SIDE_COUNT; offset <= REEL_SIDE_COUNT; offset++){
+      if(presentOffsets.has(offset)) continue;
+      const idx = ((reelCenterIndex + offset) % total + total) % total;
+      const p = sorted[idx];
+      if(!p) continue;
+      const el = reelCreateCardEl(p, offset);
+      const startOffset = offset > 0 ? REEL_SIDE_COUNT + 1 : -(REEL_SIDE_COUNT + 1);
+      reelPositionSpecificCards([el], 0, () => startOffset); // 追加前に見えない位置のtransformを確定させる
+      track.appendChild(el);
+      newCards.push(el);
     }
 
-    cards.forEach(card => {
-      card.style.transitionDuration = reelSnapMs + 'ms';
-      card.style.transitionDelay = '0ms';
-    });
-    cards.forEach(card => card.classList.add('snapping'));
-    requestAnimationFrame(() => {
-      reelPositionCards(0); // 次フレームで最終位置へ。transitionが効いて滑らかに動く
-    });
-    window.clearTimeout(reelCleanupTimer);
-    reelCleanupTimer = window.setTimeout(() => {
-      cards.forEach(card => card.classList.remove('snapping'));
-    }, reelSnapMs + 60);
+    bindReelCardEvents();
+
+    if(animate){
+      const allCards = Array.from(track.querySelectorAll('.reel-card'));
+      allCards.forEach(card => {
+        card.style.transitionDuration = reelSnapMs + 'ms';
+        card.style.transitionDelay = '0ms';
+        card.classList.add('snapping');
+      });
+      window.clearTimeout(reelCleanupTimer);
+      reelCleanupTimer = window.setTimeout(() => {
+        track.querySelectorAll('.reel-card').forEach(card => card.classList.remove('snapping'));
+      }, reelSnapMs + 60);
+      requestAnimationFrame(() => {
+        reelPositionCards(0);
+        reelUpdateSelectedClass();
+      });
+    } else {
+      reelPositionCards(0);
+      reelUpdateSelectedClass();
+    }
+  }
+
+  // 循環最短距離でのオフセット（配列インデックス間の最短差分を求める。カードのoffsetとは別物）
+  function reelCircularOffset(i, centerIndex, total){
+    let offset = i - centerIndex;
+    if(total > 0){
+      if(offset > total / 2) offset -= total;
+      else if(offset < -total / 2) offset += total;
+    }
+    return offset;
+  }
+
+  // 現在のreelCenterIndexに基づき、各カードのtransformを再適用する（centerIndex自体は変わらないが
+  // ドラッグ終了時に「元の位置に戻る」場合など、カードの入れ替えを伴わない再配置に使う）
+  function reelApplyLayout(animate){
+    const track = document.getElementById('reelTrack');
+    const cards = Array.from(track.querySelectorAll('.reel-card'));
+    if(animate){
+      cards.forEach(card => {
+        card.style.transitionDuration = reelSnapMs + 'ms';
+        card.style.transitionDelay = '0ms';
+      });
+      cards.forEach(card => card.classList.add('snapping'));
+      window.clearTimeout(reelCleanupTimer);
+      reelCleanupTimer = window.setTimeout(() => {
+        cards.forEach(card => card.classList.remove('snapping'));
+      }, reelSnapMs + 60);
+      requestAnimationFrame(() => { reelPositionCards(0); reelUpdateSelectedClass(); });
+    } else {
+      reelPositionCards(0);
+      reelUpdateSelectedClass();
+    }
   }
 
   // リール背景（中心作品の表紙をうっすら敷く）を更新する。同じ作品なら何もしない。
@@ -5269,7 +5332,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         cards.forEach(c => c.classList.remove('snapping'));
       }, reelSnapMs + 60);
     } else {
-      reelGoTo(reelCenterIndex + nearestOffset, true, reelDragCurrentOffset - nearestOffset * REEL_STEP);
+      reelGoTo(reelCenterIndex + nearestOffset, true);
     }
   }
 
@@ -5324,8 +5387,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       e.preventDefault();
       if(reelWheelLock) return;
       reelWheelLock = true;
-      if(e.deltaY > 10) reelGoTo(reelCenterIndex + 1, true, REEL_STEP);
-      else if(e.deltaY < -10) reelGoTo(reelCenterIndex - 1, true, -REEL_STEP);
+      if(e.deltaY > 10) reelGoTo(reelCenterIndex + 1, true);
+      else if(e.deltaY < -10) reelGoTo(reelCenterIndex - 1, true);
       setTimeout(() => { reelWheelLock = false; }, 220);
     }, { passive:false });
 
