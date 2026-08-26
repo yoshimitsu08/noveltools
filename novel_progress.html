@@ -5202,13 +5202,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // 既存カード・新規カードの区別なく、全カードへ同じタイミングでsnappingクラスとdurationを付与し、
       // 同じrequestAnimationFrame内で最終位置へのtransitionを一斉に開始する（上下の動き出しを完全同期）。
       //
-      // durationは「実際に動く距離」に応じて個別調整する（B案の考え方を新規カードにも適用）。
-      // 新規カードは「窓のさらに外（見えない位置）」から最終位置まで、既存カードより長い距離を
-      // 移動することが多いため、既存カードと同じ基準時間のままだと、距離が長い分だけ
-      // 見かけの到着が遅れて見えてしまう（次候補・次々候補が遅れてついてくる、というズレの正体）。
-      const baseMs = reelSnapMs;
-      const maxMs = reelSnapMs * 1.6;
-      let maxDist = 0;
+      // 2026-08-26修正：durationは「距離に比例したratio配分」ではなく、
+      // 「1マスあたりの基準速度（msPerCard）× 実際に動く距離」で統一する方式に変更。
+      // 旧方式は「distが一番大きいカードがmaxMs（最長時間）になる」比例配分だったが、
+      // 新規カード（窓の外側から現れるカード）は、最終着地点が窓の中心寄りだと
+      // スタート地点からの実距離がむしろ短くなるケースがあり（例：3枚送りで既存カードのdist=3の
+      // ところ、新規カードのdist=1〜2になる等）、その場合ratioが小さくなってms算出も短時間になり、
+      // 「次候補・次々候補だけアニメーションがほぼ無く、一瞬で持ち場に現れる」不具合の原因になっていた。
+      // 速度基準にすることで、距離の長短にかかわらず全カードの体感速度が揃う。
+      const msPerCard = reelSnapMs / Math.max(1, Math.abs(delta)); // 1マスあたりの基準時間
+      const maxMs = reelSnapMs * 1.6; // 極端に距離が長いカードの暴走防止（安全側の上限）
       const distOf = new Map();
       existing.forEach(card => { distOf.set(card, Math.abs(delta)); });
       newCards.forEach(card => {
@@ -5217,13 +5220,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
         const dist = Math.abs(finalOffset - startOffset);
         distOf.set(card, dist);
       });
-      distOf.forEach(d => { if(d > maxDist) maxDist = d; });
 
       const allCards = Array.from(track.querySelectorAll('.reel-card'));
       allCards.forEach(card => {
         const dist = distOf.get(card) || Math.abs(delta);
-        const ratio = maxDist > 0 ? Math.min(dist / maxDist, 1) : 0;
-        const ms = Math.round(baseMs + (maxMs - baseMs) * ratio);
+        const ms = Math.round(Math.min(msPerCard * Math.max(dist, 1), maxMs));
         card.style.transitionDuration = ms + 'ms';
         card.style.transitionDelay = '0ms';
         card.classList.add('snapping');
