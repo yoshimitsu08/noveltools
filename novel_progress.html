@@ -5098,7 +5098,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
             openIdeaBook();
             return;
           }
-          reelGoTo(reelCenterIndex + offset, true);
+          reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
           return;
         }
         if(p.isHelpGuide){
@@ -5108,7 +5108,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
             openHelpGuide();
             return;
           }
-          reelGoTo(reelCenterIndex + offset, true);
+          reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
           return;
         }
         if(selectMode){
@@ -5124,7 +5124,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           openDetail(p.id, coverEl);
           return;
         }
-        reelGoTo(reelCenterIndex + offset, true);
+        reelGoTo(reelCenterIndex + offset, true, offset * REEL_STEP);
       };
     });
   }
@@ -5324,8 +5324,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       e.preventDefault();
       if(reelWheelLock) return;
       reelWheelLock = true;
-      if(e.deltaY > 10) reelGoTo(reelCenterIndex + 1, true);
-      else if(e.deltaY < -10) reelGoTo(reelCenterIndex - 1, true);
+      if(e.deltaY > 10) reelGoTo(reelCenterIndex + 1, true, REEL_STEP);
+      else if(e.deltaY < -10) reelGoTo(reelCenterIndex - 1, true, -REEL_STEP);
       setTimeout(() => { reelWheelLock = false; }, 220);
     }, { passive:false });
 
