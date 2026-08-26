@@ -5375,20 +5375,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
     cardsToMove = Math.max(1, Math.min(cardsToMove, 4)); // 暴走防止の上限（電光掲示板方式：窓のバッファが前後2枚のため、飛びすぎ防止で4枚までに制限）
 
-    // 2026-08-26修正：方向判定を「距離優先、距離が閾値未満のときのみ速度で補助判定」に変更。
-    // 従来はreelDragCurrentOffsetとvelocityを「どちらか一方が条件を満たせばOK」というOR条件で
-    // 判定していたため、距離が閾値未満のごく小さな動きでも、ノイズを含みやすい速度の符号だけで
-    // 逆方向へ飛んでしまうことがあった（「一瞬だけ下に動かすと逆に上へ回転する」不具合の原因）。
-    // 距離が閾値を超えている場合は距離の符号を信頼し、閾値未満の場合のみ
-    // 「はっきりしたフリック（速度が一定以上）」であれば速度の符号を使う、という優先順位にする。
-    const FLING_VELOCITY_THRESHOLD = 0.15; // px/ms。この値未満の速度は「フリックではなく誤差」とみなす
+    // 2026-08-26再修正：速度を方向判定に使う案（距離が閾値未満のときだけ速度で補助判定）を
+    // 試したが、実機で「一瞬だけ下に動かすと逆に上へ回転する」症状が再発したため、
+    // 速度は方向判定には一切使わない方針に変更（ヨッシーさんと相談の上、安全側へ）。
+    // 方向は距離（reelDragCurrentOffset）だけで判定し、閾値未満なら常に「その場に戻る」。
+    // 速度（velocity）は、このあと変わらずcardsToMove（何枚まとめて送るか）の算出にのみ使う。
     let dir = 0; // 1=前へ（下スワイプ）, -1=次へ（上スワイプ）, 0=その場に戻る
     if(reelDragCurrentOffset > threshold){
       dir = 1;
     } else if(reelDragCurrentOffset < -threshold){
       dir = -1;
-    } else if(Math.abs(velocity) > FLING_VELOCITY_THRESHOLD){
-      dir = velocity > 0 ? 1 : -1;
     }
 
     if(dir > 0){
