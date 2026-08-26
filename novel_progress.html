@@ -5131,32 +5131,48 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // 中央カードのインデックスを切り替える（animate=trueならスナップアニメーション付き）
   // 無限ループ対応：末尾の次は先頭、先頭の前は末尾へ循環する。
-  // centerIndexが変わるたびに、表示範囲のカード群を丸ごと作り直す（reelRebuildCards）。
-  function reelGoTo(index, animate){
+  // startDragOffsetPx: アニメーション開始時点の見た目上のズレ（px）。ドラッグ終了直後に呼ぶ場合は
+  // 「指を離した瞬間のドラッグ量」を渡すことで、そこから自然に最終位置へ動く（試作ファイルの
+  // goTo()と同じ考え方）。タップ送り・ホイール等、ドラッグを伴わない場合は0でよい。
+  function reelGoTo(index, animate, startDragOffsetPx){
     if(animate === undefined) animate = true;
+    if(startDragOffsetPx === undefined) startDragOffsetPx = 0;
     const sorted = getSorted();
     if(sorted.length === 0) return;
     const total = sorted.length;
     reelCenterIndex = ((index % total) + total) % total;
     if(animate){
-      reelRebuildCardsAnimated();
+      reelRebuildCardsAnimated(startDragOffsetPx);
     } else {
       reelRebuildCards();
     }
     reelUpdateBg(sorted[reelCenterIndex]);
   }
 
-  // reelRebuildCardsのアニメーション版：カード群を作り直した直後にsnappingクラスを付与し、
-  // 次フレームで最終位置へのtransitionを開始させる（見た目はreelRebuildCardsと同じ並べ方）。
-  function reelRebuildCardsAnimated(){
+  // reelRebuildCardsのアニメーション版：新しいcenterIndexを基準にカードを作り直した直後、
+  // 見た目だけ「アニメーション開始位置」（=startDragOffsetPxだけずらした位置）に一旦戻し、
+  // 次フレームでtransitionを効かせながら最終位置(0)へ動かす。
+  // こうすることで、ドラッグ終了直後は「今指を離した位置から自然に収まる」動きになり、
+  // タップ送り等（startDragOffsetPx=0）は「1マス分スライドする」通常の動きになる。
+  function reelRebuildCardsAnimated(startDragOffsetPx){
     const track = document.getElementById('reelTrack');
-    reelRebuildCards();
+    reelRebuildCards(); // 新しいcenterIndexを基準にカードを作り直す（この時点で最終位置に配置される）
     const cards = Array.from(track.querySelectorAll('.reel-card'));
+
+    if(startDragOffsetPx !== 0){
+      // 開始位置（最終位置からstartDragOffsetPxだけずれた位置）に一旦戻す
+      reelPositionCards(startDragOffsetPx);
+      void track.offsetHeight; // 強制reflowで開始位置を確定させる
+    }
+
     cards.forEach(card => {
       card.style.transitionDuration = reelSnapMs + 'ms';
       card.style.transitionDelay = '0ms';
     });
     cards.forEach(card => card.classList.add('snapping'));
+    requestAnimationFrame(() => {
+      reelPositionCards(0); // 次フレームで最終位置へ。transitionが効いて滑らかに動く
+    });
     window.clearTimeout(reelCleanupTimer);
     reelCleanupTimer = window.setTimeout(() => {
       cards.forEach(card => card.classList.remove('snapping'));
@@ -5253,7 +5269,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         cards.forEach(c => c.classList.remove('snapping'));
       }, reelSnapMs + 60);
     } else {
-      reelGoTo(reelCenterIndex + nearestOffset, true);
+      reelGoTo(reelCenterIndex + nearestOffset, true, reelDragCurrentOffset - nearestOffset * REEL_STEP);
     }
   }
 
