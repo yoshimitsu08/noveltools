@@ -617,6 +617,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
   transform-style:preserve-3d;
   will-change:transform;
 }
+.reel-center-guide {
+  position:absolute;
+  top:50%; left:16px; right:16px;
+  max-width:520px;
+  margin-left:auto; margin-right:auto;
+  height:112px;
+  margin-top:-56px;
+  border-radius:8px;
+  border:1.5px dashed var(--accent);
+  box-shadow:0 0 12px rgba(217,119,87,0.35);
+  pointer-events:none;
+  z-index:2;
+  display:none;
+}
+.reel-center-guide.active { display:block; }
 .reel-card {
   position:absolute;
   left:16px; right:16px;
@@ -2573,6 +2588,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     <div class="reel-hint">画像タップで開く</div>
     <div class="reel-viewport" id="reelViewport">
       <div class="reel-track" id="reelTrack"></div>
+      <div class="reel-center-guide" id="reelCenterGuide"></div>
     </div>
   </div>
   <div class="pc-split-right" id="pcSplitRight"></div>
@@ -2968,6 +2984,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <div class="field">
         <label>リール背景の透過率：<span id="reelBgOpacityValueLabel">0.12</span></label>
         <input type="range" id="reelBgOpacityRangeInput" min="0" max="0.5" step="0.02" style="width:100%;">
+      </div>
+      <div class="chapter-note" style="margin:18px 0 14px;">
+        カード一覧（リール）の中央（カードが収まる位置）に、点線の枠を常時表示します。カード表示位置のズレを確認したい時などにお使いください。
+      </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="reelCenterGuideToggle" style="width:auto;">
+          <span>リール中央の目印を表示する</span>
+        </label>
       </div>
       <div class="chapter-note" style="margin:18px 0 14px;">
         ネタ帳の「ヒラメキの種」が自動で次の種に切り替わる間隔です。短くすると忙しなく、長くするとじっくり読めます。
@@ -3837,6 +3862,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   const REEL_SNAP_MS_STORAGE_KEY = 'manuscript_reel_snap_ms_v1';
   const DEFAULT_REEL_BG_OPACITY = 0.12;
   const REEL_BG_OPACITY_STORAGE_KEY = 'manuscript_reel_bg_opacity_v1';
+  const REEL_CENTER_GUIDE_STORAGE_KEY = 'manuscript_reel_center_guide_v1';
   const DEFAULT_IDEA_SEED_ROTATE_MS = 3000;
   const IDEA_SEED_ROTATE_MS_STORAGE_KEY = 'manuscript_idea_seed_rotate_ms_v1';
   const DEFAULT_HEADER_ROTATE_MS = 2000;
@@ -3886,6 +3912,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let selectorScrollOffset = DEFAULT_SELECTOR_SCROLL_OFFSET;
   let reelSnapMs = DEFAULT_REEL_SNAP_MS;
   let reelBgOpacity = DEFAULT_REEL_BG_OPACITY;
+  let reelCenterGuideEnabled = false;
   let ideaSeedRotateMs = DEFAULT_IDEA_SEED_ROTATE_MS;
   let headerRotateMs = DEFAULT_HEADER_ROTATE_MS;
   let currentTheme = DEFAULT_THEME;
@@ -3950,6 +3977,22 @@ h1 .mark { color:var(--accent); font-style:italic; }
     reelBgOpacity = val;
     try { localStorage.setItem(REEL_BG_OPACITY_STORAGE_KEY, String(val)); } catch(_e){ /* ignore */ }
     document.documentElement.style.setProperty('--reel-bg-opacity', String(val));
+  }
+
+  function loadReelCenterGuide(){
+    try {
+      reelCenterGuideEnabled = localStorage.getItem(REEL_CENTER_GUIDE_STORAGE_KEY) === '1';
+    } catch(_e){ /* keep default(false) */ }
+    applyReelCenterGuide();
+  }
+  function saveReelCenterGuide(enabled){
+    reelCenterGuideEnabled = enabled;
+    try { localStorage.setItem(REEL_CENTER_GUIDE_STORAGE_KEY, enabled ? '1' : '0'); } catch(_e){ /* ignore */ }
+    applyReelCenterGuide();
+  }
+  function applyReelCenterGuide(){
+    const guide = document.getElementById('reelCenterGuide');
+    if(guide) guide.classList.toggle('active', reelCenterGuideEnabled);
   }
 
   function loadIdeaSeedRotateMs(){
@@ -6030,6 +6073,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const bgOpacityRange = document.getElementById('reelBgOpacityRangeInput');
     bgOpacityRange.value = reelBgOpacity;
     document.getElementById('reelBgOpacityValueLabel').textContent = reelBgOpacity.toFixed(2);
+    document.getElementById('reelCenterGuideToggle').checked = reelCenterGuideEnabled;
     const seedRotateRange = document.getElementById('ideaSeedRotateMsRangeInput');
     seedRotateRange.value = ideaSeedRotateMs;
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (ideaSeedRotateMs/1000).toFixed(1);
@@ -6059,6 +6103,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
   document.getElementById('reelBgOpacityRangeInput').addEventListener('input', (e) => {
     document.getElementById('reelBgOpacityValueLabel').textContent = parseFloat(e.target.value).toFixed(2);
   });
+  document.getElementById('reelCenterGuideToggle').addEventListener('change', (e) => {
+    saveReelCenterGuide(e.target.checked);
+  });
   document.getElementById('ideaSeedRotateMsRangeInput').addEventListener('input', (e) => {
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (parseInt(e.target.value,10)/1000).toFixed(1);
   });
@@ -6076,6 +6123,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('reelSnapMsValueLabel').textContent = DEFAULT_REEL_SNAP_MS;
     document.getElementById('reelBgOpacityRangeInput').value = DEFAULT_REEL_BG_OPACITY;
     document.getElementById('reelBgOpacityValueLabel').textContent = DEFAULT_REEL_BG_OPACITY.toFixed(2);
+    document.getElementById('reelCenterGuideToggle').checked = false;
     document.getElementById('ideaSeedRotateMsRangeInput').value = DEFAULT_IDEA_SEED_ROTATE_MS;
     document.getElementById('ideaSeedRotateMsValueLabel').textContent = (DEFAULT_IDEA_SEED_ROTATE_MS/1000).toFixed(1);
     document.getElementById('headerRotateMsRangeInput').value = DEFAULT_HEADER_ROTATE_MS;
@@ -6092,6 +6140,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     saveReelSnapMs(snapVal);
     const bgOpacityVal = parseFloat(document.getElementById('reelBgOpacityRangeInput').value);
     saveReelBgOpacity(bgOpacityVal);
+    saveReelCenterGuide(document.getElementById('reelCenterGuideToggle').checked);
     const seedRotateVal = parseInt(document.getElementById('ideaSeedRotateMsRangeInput').value, 10);
     saveIdeaSeedRotateMs(seedRotateVal);
     if(ideaSeedRotateTimer) startIdeaSeedRotation(); // ネタ帳が開いていれば新しい間隔で再スタート
@@ -9590,6 +9639,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   loadReelSnapMs();
   loadReelBgOpacity();
   document.documentElement.style.setProperty('--reel-bg-opacity', String(reelBgOpacity));
+  loadReelCenterGuide();
   loadIdeaSeedRotateMs();
   loadHeaderRotateMs();
   loadBookmarkColor();
