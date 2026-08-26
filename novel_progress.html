@@ -3008,6 +3008,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           <div id="ideaNotesList"></div>
         </div>
         <div class="idea-tab-page" id="ideaTabSeeds">
+          <button type="button" class="reorder-open-btn" id="openSeedImportBtn" style="margin-bottom:12px;">＋ 種を取り込む</button>
           <div class="idea-seed-search-box">
             <input type="text" id="ideaSeedSearchInput" placeholder="🔍 取り込んだ種を検索（キーワード）">
           </div>
@@ -3015,6 +3016,30 @@ h1 .mark { color:var(--accent); font-style:italic; }
         </div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ============ Idea Seed Import Modal (ヒラメキの種 取り込み) 2026-08-26新設 ============ -->
+<div class="modal-overlay" id="seedImportModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 style="color:#9b8ac4;">種を取り込む</h2>
+      <button class="modal-close" id="seedImportModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note" style="margin-bottom:12px;">
+        <code>§</code>で1件ずつ囲んで貼り付けてください（1件50文字以内推奨。ランダム表示は2行までなので、それを超える分は一覧でのみ読めます）。<br>
+        例：<code>§記憶を失った刺客が依頼主こそ育ての親と知る§</code>
+      </div>
+      <textarea id="seedImportInput" class="auto-resize-textarea" placeholder="§ここに1件目§&#10;§ここに2件目§" style="min-height:140px; width:100%;"></textarea>
+      <button type="button" class="btn primary" id="seedImportPreviewBtn" style="width:100%; margin-top:10px;">プレビュー</button>
+      <div id="seedImportWarnings"></div>
+      <div id="seedImportPreview" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="seedImportCancelBtn">キャンセル</button>
+      <button class="btn primary" id="seedImportApplyBtn" disabled>取り込む</button>
     </div>
   </div>
 </div>
@@ -5800,6 +5825,84 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ideaSeeds = saved ? JSON.parse(saved) : [];
     } catch(_e){ ideaSeeds = []; }
   }
+  function saveIdeaSeeds(){
+    try { localStorage.setItem(IDEA_SEEDS_STORAGE_KEY, JSON.stringify(ideaSeeds)); } catch(_e){ /* ignore */ }
+  }
+
+  // 2026-08-26新設：ヒラメキの種パーサー（ネタ帳Phase 2）
+  // UpNoteで §1件目§ §2件目§ のように§で囲んで書いたテキストを貼り付け、1件ずつ取り込む。
+  // ランダム表示欄は2行までしか表示されない（実測で日本語約40文字/2行）ため、50文字を超える件は
+  // 警告するが取り込み自体は許可する（一覧タブでは全文読めるため）。
+  const IDEA_SEED_RECOMMENDED_MAX = 50;
+
+  function parseIdeaSeeds(raw){
+    const text = (raw || '').replace(/\r\n/g, '\n');
+    const matches = [...text.matchAll(/§([^§]*)§/g)];
+    const items = matches
+      .map(m => m[1].replace(/\n/g, '').trim()) // §内の改行は詰めて1件のテキストとして連結
+      .filter(t => t.length > 0);
+
+    const warnings = [];
+    if(items.length === 0){
+      warnings.push('§で囲まれた項目が見つかりませんでした。「§ここに1件§」のように囲んで貼り付けてください。');
+    }
+    const tooLong = items.filter(t => t.length > IDEA_SEED_RECOMMENDED_MAX);
+    if(tooLong.length > 0){
+      warnings.push(`${tooLong.length}件が推奨文字数（${IDEA_SEED_RECOMMENDED_MAX}文字）を超えています。ランダム表示では2行で切れます（一覧では全文読めます）。`);
+    }
+    return { items, warnings };
+  }
+
+  // 取り込み済みseed-IDの最大連番を見て、続き番号を発行する
+  function nextIdeaSeedId(){
+    let maxNum = 0;
+    ideaSeeds.forEach(s => {
+      const m = (s.id||'').match(/^seed-(\d+)$/);
+      if(m) maxNum = Math.max(maxNum, parseInt(m[1],10));
+    });
+    return maxNum;
+  }
+
+  let seedImportParsedItems = [];
+
+  function renderSeedImportPreview(items, warnings){
+    const previewWrap = document.getElementById('seedImportPreview');
+    const warnWrap = document.getElementById('seedImportWarnings');
+    const applyBtn = document.getElementById('seedImportApplyBtn');
+
+    if(items.length === 0){
+      previewWrap.innerHTML = '<div class="chapter-tabs-empty">取り込める項目がありませんでした</div>';
+      applyBtn.disabled = true;
+    } else {
+      previewWrap.innerHTML = items.map((t, i) => `
+        <div class="parse-item">
+          <div class="parse-item-head">
+            <span class="parse-item-tag" style="background:#9b8ac4;">種 ${i+1}</span>
+            <span class="parse-item-title">${t.length}文字${t.length > IDEA_SEED_RECOMMENDED_MAX ? '　⚠推奨超過' : ''}</span>
+          </div>
+          <div class="parse-item-body">${escapeHTML(t)}</div>
+        </div>`).join('');
+      applyBtn.disabled = false;
+    }
+
+    if(warnings.length > 0){
+      warnWrap.innerHTML = `<div class="parse-warning-box">⚠ 確認してください：<br>${warnings.map(w=>'・'+escapeHTML(w)).join('<br>')}</div>`;
+    } else {
+      warnWrap.innerHTML = '';
+    }
+  }
+
+  function openSeedImportModal(){
+    document.getElementById('seedImportInput').value = '';
+    document.getElementById('seedImportPreview').innerHTML = '';
+    document.getElementById('seedImportWarnings').innerHTML = '';
+    document.getElementById('seedImportApplyBtn').disabled = true;
+    seedImportParsedItems = [];
+    document.getElementById('seedImportModalOverlay').classList.add('active');
+  }
+  function closeSeedImportModal(){
+    document.getElementById('seedImportModalOverlay').classList.remove('active');
+  }
 
   function ideaSeedPool(){
     return ideaSeeds.length > 0 ? ideaSeeds : IDEA_DUMMY_SEEDS;
@@ -5942,7 +6045,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function renderIdeaSeedsList(){
     const wrap = document.getElementById('ideaSeedsList');
     if(ideaSeeds.length === 0){
-      wrap.innerHTML = '<div class="idea-empty-hint">まだ「種」が取り込まれていません。<br>（フェーズ2でUpNoteからの取り込み機能を追加予定）</div>';
+      wrap.innerHTML = '<div class="idea-empty-hint">まだ「種」が取り込まれていません。<br>上の「＋ 種を取り込む」から追加できます。</div>';
       return;
     }
     const q = ideaSeedSearchQuery.trim().toLowerCase();
@@ -5968,6 +6071,32 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('ideaBookModalOverlay').addEventListener('click', (e) => {
       if(e.target.id === 'ideaBookModalOverlay') closeIdeaBook();
     });
+
+    // 2026-08-26新設：ヒラメキの種 取り込みモーダル
+    document.getElementById('openSeedImportBtn').onclick = openSeedImportModal;
+    document.getElementById('seedImportModalClose').onclick = closeSeedImportModal;
+    document.getElementById('seedImportCancelBtn').onclick = closeSeedImportModal;
+    document.getElementById('seedImportModalOverlay').addEventListener('click', (e) => {
+      if(e.target.id === 'seedImportModalOverlay') closeSeedImportModal();
+    });
+    document.getElementById('seedImportPreviewBtn').onclick = () => {
+      const raw = document.getElementById('seedImportInput').value;
+      const { items, warnings } = parseIdeaSeeds(raw);
+      seedImportParsedItems = items;
+      renderSeedImportPreview(items, warnings);
+    };
+    document.getElementById('seedImportApplyBtn').onclick = () => {
+      if(seedImportParsedItems.length === 0) return;
+      let nextNum = nextIdeaSeedId();
+      seedImportParsedItems.forEach(text => {
+        nextNum += 1;
+        ideaSeeds.push({ id: 'seed-' + String(nextNum).padStart(4,'0'), text });
+      });
+      saveIdeaSeeds();
+      renderIdeaSeedsList();
+      closeSeedImportModal();
+    };
+
     // タップで手動送り（自動ローテーションのタイマーはリセットして重複切替を防ぐ）
     document.getElementById('ideaSeedRandomBox').onclick = () => {
       showNextIdeaSeed(false);
