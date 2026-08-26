@@ -4956,7 +4956,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // ================= Reel view（2026-08-26 大改修：centerIndex一本管理方式） =================
   // 設計：「窓（表示範囲＋バッファ）の外に出たカードをDOMから削除／新規追加する」電光掲示板方式を廃止。
-  // 常に中心の左右REEL_SIDE_COUNT枚ずつ（固定枚数）を毎回作り直す、シンプルな方式に変更した。
+  // 常に中心の左右REEL_SIDE_COUNT_MAX枚ずつ（作品数が少ない場合は自動的に絞り込み）を
+  // 毎回作り直す、シンプルな方式に変更した。
   // 状態として持つのは「今のcenterIndex（整数）」だけで、速度計算・電光掲示板の差分更新ロジックは一切ない。
   // ドラッグ終了時の判定も、割り算による距離計算ではなく「指を離した瞬間の各カードの実座標を見て、
   // 画面中央(Y=0)に一番近いカードを直接探す」方式（reel_prototype-3.htmlで確定・実機確認済み）。
@@ -4964,10 +4965,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
   const REEL_CARD_HEIGHT = 112;
   const REEL_CARD_GAP = 14;
   const REEL_STEP = REEL_CARD_HEIGHT + REEL_CARD_GAP;
-  // 中心の左右何枚を常時DOMに保持するか（固定枚数）。「弾倉を回すような、指に完全追従する
+  // 中心の左右何枚を常時DOMに保持するか（上限値）。「弾倉を回すような、指に完全追従する
   // 気持ちよさ」を維持する方針のため、ドラッグ距離に上限（ゴムのような抵抗）は設けない。
   // その代わり、長く引っ張っても画面外が空白にならないようバッファを広め（片側7枚）に確保する。
-  const REEL_SIDE_COUNT = 7;
+  // 2026-08-26追記：作品数が少ない（循環バッファが一周してしまう）場合、この上限値のままだと
+  // 同じ作品のカードが複数のoffsetに重複して描画されてしまう不具合があった。実際に使う枚数は
+  // reelEffectiveSideCount()で作品数に応じて安全な範囲に自動的に絞り込む。
+  const REEL_SIDE_COUNT_MAX = 7;
   let reelCenterIndex = 0;
   let reelSortedIds = []; // 直前に描画した並び順（IDの配列）。並び替え発生検知に使う
   let reelDragStartY = null;
@@ -4977,6 +4981,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let reelMouseStartY = null;
   let reelWheelLock = false;
   let reelCleanupTimer = null;
+
+  // 実際にDOM上へ保持する片側枚数を返す。作品総数totalが少ない場合、REEL_SIDE_COUNT_MAXのままだと
+  // 循環バッファが一周し、同じ作品のカードが複数のoffsetに重複描画されてしまうため、
+  // 「片側offset*2+1が総数を超えない」範囲まで自動的に絞り込む（最低0枚）。
+  function reelEffectiveSideCount(total){
+    if(total <= 1) return 0;
+    return Math.min(REEL_SIDE_COUNT_MAX, Math.floor((total - 1) / 2));
+  }
 
   function renderReel(){
     const viewport = document.getElementById('reelViewport');
@@ -5016,15 +5028,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   }
 
-  // 現在のreelCenterIndexを基準に、表示範囲（中心の左右REEL_SIDE_COUNT枚ずつ）のカードを
+  // 現在のreelCenterIndexを基準に、表示範囲（中心の左右・作品数に応じた枚数ずつ）のカードを
   // DOMに作り直す。centerIndexが変わるたびに毎回全部作り直すシンプルな方式
-  // （REEL_SIDE_COUNT*2+1枚だけなので負荷は軽い。旧・電光掲示板方式の差分更新は行わない）。
+  // （枚数は少ないので負荷は軽い。旧・電光掲示板方式の差分更新は行わない）。
   function reelRebuildCards(){
     const track = document.getElementById('reelTrack');
     const sorted = getSorted();
     const total = sorted.length;
     track.innerHTML = '';
-    for(let offset = -REEL_SIDE_COUNT; offset <= REEL_SIDE_COUNT; offset++){
+    if(total === 0) return;
+    const sideCount = reelEffectiveSideCount(total);
+    for(let offset = -sideCount; offset <= sideCount; offset++){
       const idx = ((reelCenterIndex + offset) % total + total) % total;
       const p = sorted[idx];
       if(!p) continue;
@@ -5159,12 +5173,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const track = document.getElementById('reelTrack');
     const sorted = getSorted();
     const total = sorted.length;
+    const sideCount = reelEffectiveSideCount(total);
     const existing = Array.from(track.querySelectorAll('.reel-card'));
 
     // 1) 既存カードのoffsetをシフトし、範囲外になったものは削除
     existing.forEach(card => {
       const newOffset = (parseInt(card.dataset.offset, 10) || 0) - delta;
-      if(Math.abs(newOffset) > REEL_SIDE_COUNT){
+      if(Math.abs(newOffset) > sideCount){
         card.remove();
       } else {
         card.dataset.offset = String(newOffset);
@@ -5175,13 +5190,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     // 追加直後は「範囲のさらに外（見えない位置）」に配置し、他のカードと同時にtransitionさせる。
     const presentOffsets = new Set(Array.from(track.querySelectorAll('.reel-card')).map(c => parseInt(c.dataset.offset, 10)));
     const newCards = [];
-    for(let offset = -REEL_SIDE_COUNT; offset <= REEL_SIDE_COUNT; offset++){
+    for(let offset = -sideCount; offset <= sideCount; offset++){
       if(presentOffsets.has(offset)) continue;
       const idx = ((reelCenterIndex + offset) % total + total) % total;
       const p = sorted[idx];
       if(!p) continue;
       const el = reelCreateCardEl(p, offset);
-      const startOffset = offset > 0 ? REEL_SIDE_COUNT + 1 : -(REEL_SIDE_COUNT + 1);
+      const startOffset = offset > 0 ? sideCount + 1 : -(sideCount + 1);
       reelPositionSpecificCards([el], 0, () => startOffset); // 追加前に見えない位置のtransformを確定させる
       track.appendChild(el);
       newCards.push(el);
@@ -5392,7 +5407,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       setTimeout(() => { reelWheelLock = false; }, 220);
     }, { passive:false });
 
-    // 画面回転等でのリサイズ時は、現在の並びのまま作り直す（表示枚数は固定＝REEL_SIDE_COUNTなので
+    // 画面回転等でのリサイズ時は、現在の並びのまま作り直す（表示枚数は作品数から自動計算するので
     // 旧方式のような「表示枚数の再計算」は不要。デバウンスして連続発火を抑える）。
     let reelResizeTimer = null;
     window.addEventListener('resize', () => {
