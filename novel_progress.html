@@ -5198,6 +5198,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const el = reelCreateCardEl(p, offset);
       const startOffset = offset > 0 ? sideCount + 1 : -(sideCount + 1);
       reelPositionSpecificCards([el], 0, () => startOffset); // 追加前に見えない位置のtransformを確定させる
+      el.style.opacity = 0; // 新規カードは透明な状態から始め、最終位置へのtransition中にフェードインさせる
       track.appendChild(el);
       newCards.push(el);
     }
