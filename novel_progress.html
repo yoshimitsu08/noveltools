@@ -1569,6 +1569,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .char-field-label-display:hover {
   border-color:var(--accent);
 }
+/* 2026-08-26新設：世界観・用語集等、セクションの自由記述欄（旧.section-textarea）を
+   タップ編集式に統一する際の見た目調整。基本スタイルはchar-field-label-displayを継承しつつ、
+   本文欄らしい大きめのサイズ・行間に上書きする。 */
+.char-field-label-display.section-label-display {
+  min-height:390px;
+  background:var(--bg3);
+  font-size:0.82rem;
+  line-height:1.7;
+}
 .add-char-btn {
   width:100%;
   font-family:var(--font-ui);
@@ -4837,9 +4846,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
       .replace(/(<br>)+$/, ''); // 末尾に余計な空行ができるのを防ぐ
   }
 
-  function makeInlineEditableField(container, getValue, setValue, placeholder, onCommit){
+  // 2026-08-26追記：options.extraLabelClass / options.extraTextareaClassを追加。
+  // 世界観・用語集など、見た目のサイズ感が章カード等と異なる欄にも同じ関数を使い回せるようにする
+  // ための拡張で、既存の呼び出し（第5引数までの呼び出し）は今まで通り動作する（後方互換）。
+  function makeInlineEditableField(container, getValue, setValue, placeholder, onCommit, options){
+    const opts = options || {};
     const labelEl = document.createElement('div');
-    labelEl.className = 'char-field-label-display';
+    labelEl.className = 'char-field-label-display' + (opts.extraLabelClass ? (' ' + opts.extraLabelClass) : '');
     labelEl.tabIndex = 0; // キーボード操作でもタップと同様に選べるように
 
     const renderLabel = () => {
@@ -4856,7 +4869,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const startEdit = () => {
       const ta = document.createElement('textarea');
-      ta.className = 'auto-resize-textarea';
+      ta.className = 'auto-resize-textarea' + (opts.extraTextareaClass ? (' ' + opts.extraTextareaClass) : '');
       ta.value = getValue();
       ta.placeholder = placeholder || '';
       labelEl.replaceWith(ta);
@@ -7441,17 +7454,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(sec.type === 'characters'){
       bodyDiv.appendChild(renderCharactersEditor(sec, p));
     } else {
-      const ta = document.createElement('textarea');
-      ta.className = 'section-textarea auto-resize-textarea';
-      ta.placeholder = '自由に記述してください';
-      ta.value = sec.text || '';
-      ta.oninput = () => {
-        sec.text = ta.value;
-        p.updatedAt = Date.now();
-        save();
-      };
-      bodyDiv.appendChild(ta);
-      enableAutoResize(ta);
+      // 2026-08-26変更：世界観・用語集等の自由記述欄も、他の欄（章カード・人物カード）と
+      // 操作感を統一するためタップ編集式に変更。1セクション1欄なので重さへの影響は小さいが、
+      // 「編集方法が画面内で2種類混在する」ことによる分かりにくさを解消する狙い。
+      makeInlineEditableField(
+        bodyDiv,
+        () => sec.text || '',
+        (v) => { sec.text = v; },
+        '自由に記述してください',
+        () => { p.updatedAt = Date.now(); save(); },
+        { extraLabelClass: 'section-label-display', extraTextareaClass: 'section-textarea' }
+      );
     }
 
     block.appendChild(head);
@@ -7466,15 +7479,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
     sec.characters.forEach(ch => {
       const card = document.createElement('div');
       card.className = 'char-card';
+      // 2026-08-26新設：役割・性格・背景・その他メモの4欄も、章カードと同じ
+      // タップ編集式（makeInlineEditableField）に統一。常時textareaの状態をやめ、
+      // 編集中の欄だけにオートリサイズ計算を絞ることで体感速度を改善する。
       card.innerHTML = `
         <div class="char-card-head">
           <input type="text" class="char-name-input" placeholder="名前" value="${escapeHTML(ch.name)}">
           <button type="button" class="char-del-btn" title="この登場人物を削除">🗑</button>
         </div>
-        <div class="char-field"><label>役割</label><textarea class="auto-resize-textarea" placeholder="主人公／ヒロイン／敵役 など" data-f="role">${escapeHTML(ch.role)}</textarea></div>
-        <div class="char-field"><label>性格</label><textarea class="auto-resize-textarea" placeholder="性格・口調など" data-f="personality">${escapeHTML(ch.personality)}</textarea></div>
-        <div class="char-field"><label>背景</label><textarea class="auto-resize-textarea" placeholder="経歴・過去など" data-f="background">${escapeHTML(ch.background)}</textarea></div>
-        <div class="char-field"><label>その他メモ</label><textarea class="auto-resize-textarea" placeholder="外見・関係性など" data-f="notes">${escapeHTML(ch.notes)}</textarea></div>
+        <div class="char-field"><label>役割</label><div class="cf-slot" data-f="role"></div></div>
+        <div class="char-field"><label>性格</label><div class="cf-slot" data-f="personality"></div></div>
+        <div class="char-field"><label>背景</label><div class="cf-slot" data-f="background"></div></div>
+        <div class="char-field"><label>その他メモ</label><div class="cf-slot" data-f="notes"></div></div>
       `;
       card.querySelector('.char-name-input').oninput = (e) => {
         ch.name = e.target.value;
@@ -7488,13 +7504,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
         save();
         renderSections(p);
       };
-      card.querySelectorAll('textarea[data-f]').forEach(ta => {
-        ta.oninput = () => {
-          ch[ta.dataset.f] = ta.value;
-          p.updatedAt = Date.now();
-          save();
-        };
-        enableAutoResize(ta);
+      const charFieldPlaceholders = {
+        role: '主人公／ヒロイン／敵役 など',
+        personality: '性格・口調など',
+        background: '経歴・過去など',
+        notes: '外見・関係性など'
+      };
+      card.querySelectorAll('.cf-slot').forEach(slot => {
+        const f = slot.dataset.f;
+        makeInlineEditableField(
+          slot,
+          () => ch[f] || '',
+          (v) => { ch[f] = v; },
+          charFieldPlaceholders[f],
+          () => { p.updatedAt = Date.now(); save(); }
+        );
       });
       wrap.appendChild(card);
     });
@@ -7516,7 +7540,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
   document.getElementById('addSectionBtn').onclick = () => {
     const p = getCurrentSettingProject();
     if(!p) return;
-    p.sections.push({ id: uid(), title:'新しいセクション', type:'text', text:'' });
+    // 2026-08-26新設：これまで「＋セクションを追加」は自由記述（type:'text'）しか作れず、
+    // 「登場人物」形式（type:'characters'）のセクションを後から追加する手段がなかった。
+    // モーダルを新設せず既存のconfirmで種別を分岐する、シンプルな解決方針とした。
+    const wantsCharacters = confirm('「登場人物」形式（名前・役割・性格などのカード形式）でセクションを追加しますか？\n\nOK＝登場人物形式 / キャンセル＝自由記述');
+    if(wantsCharacters){
+      p.sections.push({ id: uid(), title:'登場人物', type:'characters', text:'', characters:[] });
+    } else {
+      p.sections.push({ id: uid(), title:'新しいセクション', type:'text', text:'' });
+    }
     p.updatedAt = Date.now();
     save();
     renderSections(p);
