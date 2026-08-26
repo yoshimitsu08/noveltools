@@ -1635,6 +1635,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .reorder-open-btn:hover { border-color:var(--accent); color:var(--accent); }
 
+.reorder-open-btn-header {
+  width:auto;
+  flex-shrink:0;
+  margin-bottom:0;
+  padding:9px 12px;
+  white-space:nowrap;
+}
+
+.setting-nav-sticky {
+  position:sticky;
+  z-index:49; /* .editor-headerのz-index:50より低くして、重なった際にヘッダーを優先表示 */
+  background:rgba(26,24,20,0.96);
+  backdrop-filter:blur(6px);
+  padding-bottom:14px;
+  border-bottom:1px solid var(--border);
+}
+
 .reorder-list {
   display:flex;
   flex-direction:column;
@@ -3562,17 +3579,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <div class="et-work" id="settingWorkTitle">—</div>
       <div class="et-label">設定・プロット</div>
     </div>
+    <button type="button" class="reorder-open-btn reorder-open-btn-header" id="settingHeaderReorderBtn">↕ 並べ替え</button>
   </div>
 
-  <div class="setting-nav">
+  <div class="setting-nav setting-nav-sticky">
     <button type="button" class="setting-nav-btn active" data-page="settingPage">設定</button>
     <button type="button" class="setting-nav-btn" data-page="plotPage">プロット（あらすじ）</button>
   </div>
 
   <div class="setting-page active" id="settingPage">
-    <div class="editor-body" style="padding-bottom:0;">
-      <button type="button" class="reorder-open-btn" id="openSectionReorderBtn">↕ 並べ替え</button>
-    </div>
     <div class="editor-body" id="settingBody">
       <!-- sections rendered here -->
     </div>
@@ -3582,9 +3597,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 
   <div class="setting-page" id="plotPage">
-    <div class="editor-body" style="padding-bottom:0;">
-      <button type="button" class="reorder-open-btn" id="openChapterReorderBtn">↕ 並べ替え</button>
-    </div>
     <div class="editor-body" id="plotBody">
       <!-- chapter cards rendered here -->
     </div>
@@ -7188,7 +7200,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.querySelectorAll('.setting-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page==='settingPage'));
     document.querySelectorAll('.setting-page').forEach(pg => pg.classList.toggle('active', pg.id==='settingPage'));
     switchView('settingView');
+    syncSettingNavStickyOffset();
   }
+
+  // 2026-08-26新設：設定/プロットタブの切り替えバー（.setting-nav-sticky）を、
+  // 常に画面上部に固定表示したいという要望への対応。
+  // すぐ上にある.editor-header（作品タイトル行）はテキスト長で高さが変わりうるため、
+  // 固定値ではなく実測高さをtopに反映する（別デバイス・フォントサイズ変化にも追従できるようにするため）。
+  function syncSettingNavStickyOffset(){
+    const header = document.querySelector('#settingView .editor-header');
+    const nav = document.querySelector('#settingView .setting-nav-sticky');
+    if(!header || !nav) return;
+    nav.style.top = header.offsetHeight + 'px';
+  }
+
+  window.addEventListener('resize', () => {
+    if(document.getElementById('settingView').classList.contains('active')) syncSettingNavStickyOffset();
+  });
 
   document.querySelectorAll('.setting-nav-btn').forEach(btn => {
     btn.onclick = () => {
@@ -7204,6 +7232,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
       }
     };
   });
+
+  // 2026-08-26新設：ヘッダー内の「↕ 並べ替え」ボタンは設定タブ・プロットタブ共通の1個のみ。
+  // 現在アクティブなタブを見て、セクション用/章用どちらの並べ替えモーダルを開くか自動判定する。
+  document.getElementById('settingHeaderReorderBtn').onclick = () => {
+    const activePage = document.querySelector('#settingView .setting-page.active');
+    if(!activePage) return;
+    openReorderModal(activePage.id === 'plotPage' ? 'chapter' : 'section');
+  };
 
   function switchView(viewId){
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -7598,8 +7634,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
     });
   }
 
-  document.getElementById('openSectionReorderBtn').onclick = () => openReorderModal('section');
-  document.getElementById('openChapterReorderBtn').onclick = () => openReorderModal('chapter');
   document.getElementById('reorderModalClose').onclick = closeReorderModal;
   document.getElementById('reorderCancelBtn').onclick = closeReorderModal;
 
