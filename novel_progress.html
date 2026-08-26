@@ -3018,14 +3018,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
           <div id="ideaNotesList"></div>
         </div>
         <div class="idea-tab-page" id="ideaTabSeeds">
-          <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <button type="button" class="reorder-open-btn" id="ideaSeedFormatPromptBtn" style="margin-bottom:0; width:auto; flex:1;">🤖 AIで記法を整える</button>
-            <button type="button" class="reorder-open-btn" id="openSeedImportBtn" style="margin-bottom:0; width:auto; flex:1;">＋ 種を取り込む</button>
-          </div>
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <button type="button" class="reorder-open-btn" id="ideaSeedExportBtn" style="margin-bottom:0; width:auto; flex:1;">📥 種をエクスポート</button>
-            <button type="button" class="reorder-open-btn" id="ideaSeedImportFileBtn" style="margin-bottom:0; width:auto; flex:1;">📤 種をインポート</button>
-            <input type="file" id="ideaSeedImportFileInput" accept="application/json" style="display:none;">
+          <div style="display:flex; justify-content:flex-end; margin-bottom:8px; position:relative;">
+            <button type="button" class="hamburger-btn" id="ideaSeedHamburgerBtn">☰</button>
+            <div class="dropdown-menu" id="ideaSeedDropdown">
+              <button type="button" class="dropdown-item" id="ideaSeedFormatPromptBtn">🤖 AIで記法を整える</button>
+              <div class="idea-seed-template-select-wrap" style="padding:4px 16px 10px;">
+                <select id="ideaSeedTemplateSelect" style="width:100%;"></select>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button type="button" class="dropdown-item" id="openSeedImportBtn">＋ 種を取り込む</button>
+              <div class="dropdown-divider"></div>
+              <button type="button" class="dropdown-item" id="ideaSeedExportBtn">📥 種をエクスポート</button>
+              <button type="button" class="dropdown-item" id="ideaSeedImportFileBtn">📤 種をインポート</button>
+              <input type="file" id="ideaSeedImportFileInput" accept="application/json" style="display:none;">
+            </div>
           </div>
           <div class="idea-seed-search-box">
             <input type="text" id="ideaSeedSearchInput" placeholder="🔍 取り込んだ種を検索（キーワード）">
@@ -4553,6 +4559,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     try { localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(promptTemplates)); }
     catch(_e){ alert('テンプレートの保存に失敗しました。'); }
     updateStorageUsageDisplay();
+    // 2026-08-27新設：テンプレート管理での追加・編集・削除後、ネタ帳の
+    // 「AIで記法を整える」テンプレート選択欄が古いままにならないよう再構築する。
+    refreshIdeaSeedTemplateSelect();
   }
 
   // ---------- Storage usage ----------
@@ -6149,6 +6158,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
       </div>`).join('');
   }
 
+  // 2026-08-27新設：ネタ帳「AIで記法を整える」のテンプレート選択欄(select)を、
+  // promptTemplates['ideaSeedFormat']の現在の内容で再構築する。
+  // initIdeaBookEvents（ネタ帳イベント初期化）とテンプレート管理側のsaveTemplates()の両方から呼ばれる。
+  function refreshIdeaSeedTemplateSelect(){
+    const sel = document.getElementById('ideaSeedTemplateSelect');
+    if(!sel) return; // ネタ帳モーダルがまだ初期化されていない場合は何もしない
+    const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
+    const savedId = localStorage.getItem('ideaSeedFormatSelectedTemplateId');
+    const validId = list.some(t => t.id === savedId) ? savedId : (list[0] && list[0].id);
+    sel.innerHTML = list.map(t => `<option value="${t.id}">${escapeHTML(t.name || '無題テンプレート')}</option>`).join('');
+    if(validId) sel.value = validId;
+  }
+
   // 2026-08-23新設：ネタ帳モーダルまわりのイベントバインド（DOMContentLoaded後、初期化処理内で1回だけ呼ぶ想定）
   function initIdeaBookEvents(){
     document.getElementById('ideaBookModalClose').onclick = closeIdeaBook;
@@ -6156,8 +6178,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(e.target.id === 'ideaBookModalOverlay') closeIdeaBook();
     });
 
+    // 2026-08-27新設：「取り込んだ種一覧」タブのボタン群をハンバーガーメニューに集約。
+    // 開閉は他のハンバーガーメニュー（dashDropdown等）と同じ .dropdown-menu / .active パターンを踏襲。
+    document.getElementById('ideaSeedHamburgerBtn').onclick = (e) => {
+      e.stopPropagation();
+      document.getElementById('ideaSeedDropdown').classList.toggle('active');
+    };
+
     // 2026-08-26新設：ヒラメキの種 取り込みモーダル
-    document.getElementById('openSeedImportBtn').onclick = openSeedImportModal;
+    document.getElementById('openSeedImportBtn').onclick = () => {
+      document.getElementById('ideaSeedDropdown').classList.remove('active');
+      openSeedImportModal();
+    };
     document.getElementById('seedImportModalClose').onclick = closeSeedImportModal;
     document.getElementById('seedImportCancelBtn').onclick = closeSeedImportModal;
     document.getElementById('seedImportModalOverlay').addEventListener('click', (e) => {
@@ -6182,8 +6214,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
     };
 
     // 2026-08-26新設：ヒラメキの種 全件エクスポート／インポート（JSON）
-    document.getElementById('ideaSeedExportBtn').onclick = exportIdeaSeeds;
+    document.getElementById('ideaSeedExportBtn').onclick = () => {
+      document.getElementById('ideaSeedDropdown').classList.remove('active');
+      exportIdeaSeeds();
+    };
     document.getElementById('ideaSeedImportFileBtn').onclick = () => {
+      document.getElementById('ideaSeedDropdown').classList.remove('active');
       document.getElementById('ideaSeedImportFileInput').click();
     };
     document.getElementById('ideaSeedImportFileInput').onchange = (e) => {
@@ -6192,12 +6228,24 @@ h1 .mark { color:var(--accent); font-style:italic; }
       e.target.value = ''; // 同じファイルを連続選択しても onchange が発火するようにリセット
     };
 
-    // 2026-08-26新設：「AIで記法を整える」ボタン。
-    // ハンバーガーメニュー「プロンプトテンプレート管理」の"ヒラメキの種整形"用途で編集したテンプレートを使う。
-    // 複数テンプレートを登録していても、常に先頭（1件目）をコピー対象とする（選択UIは今のところ持たない簡易仕様）。
+    // 2026-08-27改修：「AIで記法を整える」で使うテンプレートを選択式に変更。
+    // 用途'ideaSeedFormat'に登録された全テンプレートを select の選択肢として並べ、
+    // 選択中のIDを ideaSeedFormatSelectedTemplateId として保持（作品をまたいだアプリ全体設定として localStorage に保存）。
+    // 関数本体はトップレベルの refreshIdeaSeedTemplateSelect() を参照（テンプレート管理画面の
+    // saveTemplates() からも呼び出せるようにするため、initIdeaBookEvents内には置かない）。
+    document.getElementById('ideaSeedTemplateSelect').onchange = (e) => {
+      localStorage.setItem('ideaSeedFormatSelectedTemplateId', e.target.value);
+    };
+    document.getElementById('ideaSeedTemplateSelect').addEventListener('click', (e) => {
+      e.stopPropagation(); // メニュー内クリックでドロップダウンが閉じないように
+    });
+    refreshIdeaSeedTemplateSelect();
+
     document.getElementById('ideaSeedFormatPromptBtn').onclick = () => {
+      document.getElementById('ideaSeedDropdown').classList.remove('active');
       const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
-      const t = list[0] || { head:'', tail:'' };
+      const selectedId = document.getElementById('ideaSeedTemplateSelect').value;
+      const t = list.find(t => t.id === selectedId) || list[0] || { head:'', tail:'' };
       const text = [t.head||'', t.tail||''].filter(s=>s.trim()).join('\n\n').trim();
       copyTextWithToast(text);
     };
@@ -6479,6 +6527,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const dmenu = document.getElementById('detailDropdown');
     if(dmenu.classList.contains('active') && !dmenu.contains(e.target) && e.target.id !== 'detailHamburgerBtn'){
       dmenu.classList.remove('active');
+    }
+    // 2026-08-27新設：ネタ帳「取り込んだ種一覧」タブのハンバーガーメニュー
+    const seedMenu = document.getElementById('ideaSeedDropdown');
+    if(seedMenu && seedMenu.classList.contains('active') && !seedMenu.contains(e.target) && e.target.id !== 'ideaSeedHamburgerBtn'){
+      seedMenu.classList.remove('active');
     }
   });
   document.getElementById('menuSelectModeBtn').onclick = () => {
