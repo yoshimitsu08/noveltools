@@ -1125,6 +1125,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
   font-size:0.75rem;
 }
 .idea-seed-search-box input:focus { outline:none; border-color:#9b8ac4; }
+.idea-seed-item-title {
+  font-family:var(--font-body);
+  font-size:0.9rem;
+  color:var(--text);
+  flex:1;
+  min-width:0;
+  white-space:pre-wrap; /* 省略せず全文表示。改行があれば保持する */
+  word-break:break-word;
+}
 .idea-seed-item-id {
   font-family:var(--font-ui);
   font-size:0.55rem;
@@ -2830,6 +2839,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <button type="button" class="setting-nav-btn" data-purpose="writeManuscript">本文を作る</button>
         <button type="button" class="setting-nav-btn" data-purpose="imagePrompts">画像プロンプト作成</button>
         <button type="button" class="setting-nav-btn" data-purpose="introText">紹介文作成</button>
+        <button type="button" class="setting-nav-btn" data-purpose="ideaSeedFormat">ヒラメキの種整形</button>
       </div>
       <div id="templateListWrap" style="margin-top:14px;"></div>
       <button type="button" class="add-section-btn" id="templateAddBtn">＋ テンプレートを追加</button>
@@ -3008,7 +3018,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
           <div id="ideaNotesList"></div>
         </div>
         <div class="idea-tab-page" id="ideaTabSeeds">
-          <button type="button" class="reorder-open-btn" id="openSeedImportBtn" style="margin-bottom:12px;">＋ 種を取り込む</button>
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <button type="button" class="reorder-open-btn" id="ideaSeedFormatPromptBtn" style="margin-bottom:0; width:auto; flex:1;">🤖 AIで記法を整える</button>
+            <button type="button" class="reorder-open-btn" id="openSeedImportBtn" style="margin-bottom:0; width:auto; flex:1;">＋ 種を取り込む</button>
+          </div>
           <div class="idea-seed-search-box">
             <input type="text" id="ideaSeedSearchInput" placeholder="🔍 取り込んだ種を検索（キーワード）">
           </div>
@@ -4440,7 +4453,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // ---------- Prompt templates (shared across all projects) ----------
   // 2026-08-17: 用途別（HUB_PURPOSESのid）にテンプレート配列を持つ構造に変更。
   // 旧形式（配列1本、writeManuscript専用）は読み込み時に自動マイグレーションする。
-  const TEMPLATE_PURPOSE_IDS = ['buildSettingPlot', 'reviewSettingPlot', 'writeManuscript', 'imagePrompts', 'introText'];
+  const TEMPLATE_PURPOSE_IDS = ['buildSettingPlot', 'reviewSettingPlot', 'writeManuscript', 'imagePrompts', 'introText', 'ideaSeedFormat'];
 
   function defaultTemplatesFor(purposeId){
     if(purposeId === 'writeManuscript'){
@@ -4482,6 +4495,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
         id: uid(),
         name: '標準',
         head: 'あなたはプロの書籍編集者です。以下は、ある小説の設定・プロット（または本文）です。この内容をもとに、読者の興味を引く「紹介文（あらすじ紹介）」を作成してください。\n\n【条件】\n・ネタバレは避け、読者が続きを読みたくなるような書き方にしてください\n・長さの目安は300〜600字程度としてください\n・見出しや記号は付けず、紹介文の本文のみを出力してください',
+        tail: ''
+      }];
+    }
+    if(purposeId === 'ideaSeedFormat'){
+      return [{
+        id: uid(),
+        name: '標準',
+        head: '以下のメモ・アイデア断片を、小説創作用の「ヒラメキの種」として整形してください。\n\n【出力形式】\n・1件につき §テキスト§ の形式で、必ず§で挟む\n・1件は50文字以内（日本語）に収める。長い場合は要点を絞って短くする\n・原文の趣旨やニュアンスは変えない\n・出力は §...§ の羅列のみとし、前置き・後書き・番号付けは不要\n\n【変換対象のメモ】\n（ここに元のメモを貼り付けてください）',
         tail: ''
       }];
     }
@@ -6058,8 +6079,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
     wrap.innerHTML = filtered.map(s => `
       <div class="idea-note-item">
-        <div class="idea-note-item-head" style="cursor:default;">
-          <div class="idea-note-item-title">${escapeHTML(s.text)}</div>
+        <div class="idea-note-item-head" style="cursor:default; align-items:flex-start;">
+          <div class="idea-seed-item-title">${escapeHTML(s.text)}</div>
           <div class="idea-seed-item-id">#${escapeHTML(s.id||'')}</div>
         </div>
       </div>`).join('');
@@ -6095,6 +6116,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
       saveIdeaSeeds();
       renderIdeaSeedsList();
       closeSeedImportModal();
+    };
+
+    // 2026-08-26新設：「AIで記法を整える」ボタン。
+    // ハンバーガーメニュー「プロンプトテンプレート管理」の"ヒラメキの種整形"用途で編集したテンプレートを使う。
+    // 複数テンプレートを登録していても、常に先頭（1件目）をコピー対象とする（選択UIは今のところ持たない簡易仕様）。
+    document.getElementById('ideaSeedFormatPromptBtn').onclick = () => {
+      const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
+      const t = list[0] || { head:'', tail:'' };
+      const text = [t.head||'', t.tail||''].filter(s=>s.trim()).join('\n\n').trim();
+      copyTextWithToast(text);
     };
 
     // タップで手動送り（自動ローテーションのタイマーはリセットして重複切替を防ぐ）
@@ -9998,7 +10029,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     reviewSettingPlot: '精査・ブラッシュアップ',
     writeManuscript: '本文を作る',
     imagePrompts: '画像プロンプト作成',
-    introText: '紹介文作成'
+    introText: '紹介文作成',
+    ideaSeedFormat: 'ヒラメキの種整形'
   };
 
   document.getElementById('menuTemplatesBtn').onclick = () => {
