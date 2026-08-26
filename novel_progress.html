@@ -2575,6 +2575,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .card.select-mode.selected { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 .card.select-mode { cursor:default; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 <body>
 
@@ -7523,6 +7524,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   let reorderMode = null; // 'section' | 'chapter'
   let reorderWorkingList = []; // [{id, title}] の一時作業用配列（元データのコピー）
+  let reorderSortableInstance = null; // Sortable.jsのインスタンス（モーダルを開くたびに作り直す）
 
   function openReorderModal(mode){
     const p = getCurrentSettingProject();
@@ -7546,6 +7548,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('reorderModalOverlay').classList.remove('active');
     reorderMode = null;
     reorderWorkingList = [];
+    if(reorderSortableInstance){
+      reorderSortableInstance.destroy();
+      reorderSortableInstance = null;
+    }
   }
 
   function renderReorderList(){
@@ -7563,61 +7569,24 @@ h1 .mark { color:var(--accent); font-style:italic; }
       `;
       listEl.appendChild(row);
     });
-    attachReorderDragHandlers();
+    initReorderSortable(listEl);
   }
 
-  // つまみ（.reorder-handle）を起点にしたドラッグ実装。
-  // マウス/タッチどちらもポインターイベントで統一的に扱う。
-  // 修正（2026-08-26）：ポインターイベントを受け取る要素（handle）と、
-  // setPointerCaptureおよびpointermove/pointerup等のリスナーを付ける要素がズレていたため、
-  // 環境によってはドラッグが正しく反応しない不具合があった。すべてhandle側に統一する。
-  function attachReorderDragHandlers(){
-    const listEl = document.getElementById('reorderList');
-    const rows = Array.from(listEl.querySelectorAll('.reorder-row'));
-
-    rows.forEach(row => {
-      const handle = row.querySelector('.reorder-handle');
-      handle.onpointerdown = (e) => {
-        e.preventDefault();
-        startRowDrag(row, handle, listEl, e.pointerId);
-      };
+  // 自前のpointerイベント実装がAndroid実機で反応不良だったため、
+  // 実績のあるSortable.jsライブラリに置き換え（2026-08-26）。
+  // handle: '.reorder-handle' により、つまみ以外の場所（行のスクロール等）とのタッチ競合を避ける。
+  function initReorderSortable(listEl){
+    if(reorderSortableInstance){
+      reorderSortableInstance.destroy();
+      reorderSortableInstance = null;
+    }
+    reorderSortableInstance = Sortable.create(listEl, {
+      handle: '.reorder-handle',
+      animation: 150,
+      ghostClass: 'drag-placeholder',
+      dragClass: 'dragging',
+      onSort: () => syncWorkingListFromDom(listEl)
     });
-  }
-
-  function startRowDrag(row, handle, listEl, pointerId){
-    row.classList.add('dragging');
-    handle.setPointerCapture && handle.setPointerCapture(pointerId);
-
-    const onMove = (e) => {
-      const rows = Array.from(listEl.querySelectorAll('.reorder-row:not(.dragging)'));
-      const pointerY = e.clientY;
-      // 現在ドラッグ中の行を、指の位置に応じて他の行と入れ替える
-      let targetRow = null;
-      for(const r of rows){
-        const rect = r.getBoundingClientRect();
-        const mid = rect.top + rect.height/2;
-        if(pointerY < mid){ targetRow = r; break; }
-      }
-      if(targetRow){
-        listEl.insertBefore(row, targetRow);
-      } else {
-        listEl.appendChild(row);
-      }
-    };
-
-    const onUp = () => {
-      row.classList.remove('dragging');
-      handle.releasePointerCapture && handle.releasePointerCapture(pointerId);
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
-      handle.removeEventListener('pointercancel', onUp);
-      // DOM上の並び順をreorderWorkingListへ反映し、番号ラベルを振り直す
-      syncWorkingListFromDom(listEl);
-    };
-
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
-    handle.addEventListener('pointercancel', onUp);
   }
 
   function syncWorkingListFromDom(listEl){
