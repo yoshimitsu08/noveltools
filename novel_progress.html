@@ -1620,6 +1620,83 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .add-section-btn:hover { border-color:var(--accent); color:var(--accent); }
 
+/* ============ 並べ替え（reorder）関連：2026-08-26新設 ============ */
+.reorder-open-btn {
+  width:100%;
+  font-family:var(--font-ui);
+  font-size:0.7rem;
+  color:var(--text2);
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:11px;
+  cursor:pointer;
+  margin-bottom:14px;
+}
+.reorder-open-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+.reorder-list {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.reorder-row {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:10px 12px;
+  touch-action:pan-y; /* つまみ以外の縦スクロールは邪魔しない */
+}
+.reorder-row-num {
+  font-family:var(--font-ui);
+  font-size:0.68rem;
+  color:var(--text3);
+  min-width:1.6em;
+  text-align:center;
+  flex-shrink:0;
+}
+.reorder-row-title {
+  flex:1;
+  font-family:var(--font-body);
+  font-size:0.85rem;
+  color:var(--text);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.reorder-row-title.is-empty { color:var(--text3); }
+.reorder-handle {
+  flex-shrink:0;
+  width:38px;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:1.1rem;
+  color:var(--text2);
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:5px;
+  cursor:grab;
+  touch-action:none; /* つまみ自体はブラウザの縦スクロールに横取りされず、常にドラッグ操作を受け取る */
+}
+.reorder-handle:active { cursor:grabbing; border-color:var(--accent); color:var(--accent); }
+
+.reorder-row.dragging {
+  opacity:0.55;
+  border-color:var(--accent);
+}
+.reorder-row.drag-placeholder {
+  border-style:dashed;
+  border-color:var(--accent);
+  background:transparent;
+}
+
 /* prompt output */
 .prompt-panel {
   background:var(--bg2);
@@ -3492,6 +3569,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 
   <div class="setting-page active" id="settingPage">
+    <div class="editor-body" style="padding-bottom:0;">
+      <button type="button" class="reorder-open-btn" id="openSectionReorderBtn">↕ 並べ替え</button>
+    </div>
     <div class="editor-body" id="settingBody">
       <!-- sections rendered here -->
     </div>
@@ -3501,11 +3581,34 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 
   <div class="setting-page" id="plotPage">
+    <div class="editor-body" style="padding-bottom:0;">
+      <button type="button" class="reorder-open-btn" id="openChapterReorderBtn">↕ 並べ替え</button>
+    </div>
     <div class="editor-body" id="plotBody">
       <!-- chapter cards rendered here -->
     </div>
     <div class="editor-body" style="padding-top:0;">
       <button type="button" class="add-chapter-btn" id="addChapterBtn">＋ 章を追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Reorder Modal (共通：セクション/章の並べ替え) ============ -->
+<div class="modal-overlay" id="reorderModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="reorderModalTitle">並べ替え</h2>
+      <button class="modal-close" id="reorderModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note" style="margin-bottom:12px;">右端の「≡」を押したまま上下にドラッグすると順番を動かせます。「保存」を押すまでは反映されません。</div>
+      <div class="reorder-list" id="reorderList">
+        <!-- reorder rows rendered here -->
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="reorderCancelBtn">キャンセル</button>
+      <button class="btn primary" id="reorderSaveBtn">保存</button>
     </div>
   </div>
 </div>
@@ -7403,6 +7506,150 @@ h1 .mark { color:var(--accent); font-style:italic; }
     p.updatedAt = Date.now();
     save();
     renderChapters(p);
+  };
+
+  // ================= 並べ替えモーダル（2026-08-26新設） =================
+  // 目的：設定タブのセクション（p.sections）とプロットタブの章（p.plotChapters）を、
+  //       それぞれ個別のカード編集画面ではなく、タイトルだけの一覧を見ながら並べ替えたい
+  //       というヨッシーさんの要望に対応する。
+  // 方針（安全側に振った実装）：
+  //   ・ドラッグの起点は行右端の「≡」つまみのみに限定する（行全体を掴めるようにすると、
+  //     一覧をスクロールしたいだけのタッチと衝突し、誤って順番が変わってしまう事故が起きやすいため）。
+  //   ・モーダルを開いている間は作業用のローカル配列（reorderWorkingList）のみを操作し、
+  //     実データ（p.sections / p.plotChapters）へは「保存」ボタンを押した時点で初めて反映する。
+  //     「キャンセル」または×で閉じれば、何も変更されない（安全弁）。
+  //   ・つまみ要素には touch-action:none を指定し、CSS側の.reorder-rowはtouch-action:pan-yのまま
+  //     にしてある（つまみ以外の部分は縦スクロールを妨げない）。
+
+  let reorderMode = null; // 'section' | 'chapter'
+  let reorderWorkingList = []; // [{id, title}] の一時作業用配列（元データのコピー）
+
+  function openReorderModal(mode){
+    const p = getCurrentSettingProject();
+    if(!p) return;
+    reorderMode = mode;
+
+    const title = mode === 'section' ? 'セクションの並べ替え' : '章の並べ替え';
+    document.getElementById('reorderModalTitle').textContent = title;
+
+    if(mode === 'section'){
+      reorderWorkingList = p.sections.map(sec => ({ id: sec.id, title: sec.title || '（無題セクション）' }));
+    } else {
+      reorderWorkingList = p.plotChapters.map((ch, idx) => ({ id: ch.id, title: ch.title || `第${idx+1}章` }));
+    }
+
+    renderReorderList();
+    document.getElementById('reorderModalOverlay').classList.add('active');
+  }
+
+  function closeReorderModal(){
+    document.getElementById('reorderModalOverlay').classList.remove('active');
+    reorderMode = null;
+    reorderWorkingList = [];
+  }
+
+  function renderReorderList(){
+    const listEl = document.getElementById('reorderList');
+    listEl.innerHTML = '';
+    reorderWorkingList.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'reorder-row';
+      row.dataset.id = item.id;
+      const isEmpty = !item.title || item.title.indexOf('（無題') === 0 || /^第\d+章$/.test(item.title);
+      row.innerHTML = `
+        <span class="reorder-row-num">${idx+1}</span>
+        <span class="reorder-row-title${isEmpty ? ' is-empty' : ''}">${escapeHTML(item.title)}</span>
+        <span class="reorder-handle" title="ドラッグして並べ替え">≡</span>
+      `;
+      listEl.appendChild(row);
+    });
+    attachReorderDragHandlers();
+  }
+
+  // つまみ（.reorder-handle）を起点にしたドラッグ実装。
+  // マウス/タッチどちらもポインターイベントで統一的に扱う。
+  function attachReorderDragHandlers(){
+    const listEl = document.getElementById('reorderList');
+    const rows = Array.from(listEl.querySelectorAll('.reorder-row'));
+
+    rows.forEach(row => {
+      const handle = row.querySelector('.reorder-handle');
+      handle.onpointerdown = (e) => {
+        e.preventDefault();
+        startRowDrag(row, listEl, e.pointerId);
+      };
+    });
+  }
+
+  function startRowDrag(row, listEl, pointerId){
+    row.classList.add('dragging');
+    row.setPointerCapture && row.setPointerCapture(pointerId);
+
+    const rowHeight = row.offsetHeight;
+
+    const onMove = (e) => {
+      const rows = Array.from(listEl.querySelectorAll('.reorder-row:not(.dragging)'));
+      const pointerY = e.clientY;
+      // 現在ドラッグ中の行を、指の位置に応じて他の行と入れ替える
+      let targetRow = null;
+      for(const r of rows){
+        const rect = r.getBoundingClientRect();
+        const mid = rect.top + rect.height/2;
+        if(pointerY < mid){ targetRow = r; break; }
+      }
+      if(targetRow){
+        listEl.insertBefore(row, targetRow);
+      } else {
+        listEl.appendChild(row);
+      }
+    };
+
+    const onUp = () => {
+      row.classList.remove('dragging');
+      row.removeEventListener('pointermove', onMove);
+      row.removeEventListener('pointerup', onUp);
+      row.removeEventListener('pointercancel', onUp);
+      // DOM上の並び順をreorderWorkingListへ反映し、番号ラベルを振り直す
+      syncWorkingListFromDom(listEl);
+    };
+
+    row.addEventListener('pointermove', onMove);
+    row.addEventListener('pointerup', onUp);
+    row.addEventListener('pointercancel', onUp);
+  }
+
+  function syncWorkingListFromDom(listEl){
+    const idsInOrder = Array.from(listEl.querySelectorAll('.reorder-row')).map(r => r.dataset.id);
+    reorderWorkingList = idsInOrder.map(id => reorderWorkingList.find(item => item.id === id));
+    // 番号ラベル（1,2,3...）だけを再描画（行そのものは作り直さない＝ドラッグ後のDOM順を尊重）
+    Array.from(listEl.querySelectorAll('.reorder-row')).forEach((row, idx) => {
+      row.querySelector('.reorder-row-num').textContent = idx+1;
+    });
+  }
+
+  document.getElementById('openSectionReorderBtn').onclick = () => openReorderModal('section');
+  document.getElementById('openChapterReorderBtn').onclick = () => openReorderModal('chapter');
+  document.getElementById('reorderModalClose').onclick = closeReorderModal;
+  document.getElementById('reorderCancelBtn').onclick = closeReorderModal;
+
+  document.getElementById('reorderSaveBtn').onclick = () => {
+    const p = getCurrentSettingProject();
+    if(!p || !reorderMode){ closeReorderModal(); return; }
+
+    const idOrder = reorderWorkingList.map(item => item.id);
+
+    if(reorderMode === 'section'){
+      p.sections.sort((a, b) => idOrder.indexOf(a.id) - idOrder.indexOf(b.id));
+      p.updatedAt = Date.now();
+      save();
+      renderSections(p);
+    } else {
+      p.plotChapters.sort((a, b) => idOrder.indexOf(a.id) - idOrder.indexOf(b.id));
+      p.updatedAt = Date.now();
+      save();
+      renderChapters(p);
+    }
+    closeReorderModal();
   };
 
   function renderSectionBlock(sec, p){
