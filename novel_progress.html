@@ -5205,6 +5205,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     bindReelCardEvents();
 
+    // 新規カードのopacity:0を「変化前の状態」としてブラウザに確定させるため、強制reflowを挟む。
+    // これが無いと、opacity:0の設定とsnappingクラス付与が同一フレーム内で行われ、
+    // ブラウザが変化前後を区別できずtransitionが発火しない（＝いきなり出現して見える）。
+    if(newCards.length > 0){
+      void track.offsetHeight;
+    }
+
     if(animate){
       const allCards = Array.from(track.querySelectorAll('.reel-card'));
       allCards.forEach(card => {
