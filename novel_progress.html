@@ -7736,8 +7736,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
     };
     card.querySelector('.chapter-del-btn').onclick = () => {
-      if(!confirm(`「${ch.title || `第${idx+1}章`}」を削除します。よろしいですか？`)) return;
+      const chapterLabel = ch.title || `第${idx+1}章`;
+      // 2026-08-26新設：この章に本文（Sentence Selectorの選択中カード）が
+      // 1文字でも書かれている場合、通常の確認より強い二段階確認を挟む。
+      // 章削除処理自体は p.plotChapters のみを対象としており、対応する
+      // p.manuscript[ch.id]（本文データ）は別の入れ物のため自動では消えない仕様だったが、
+      // 「章を消したら本文も一緒に消える」という体感に合わせ、ここで明示的に削除する。
+      const manuscriptEntry = p.manuscript && p.manuscript[ch.id];
+      const hasManuscriptText = manuscriptEntry && composeSelectorText(ensureSelector(manuscriptEntry)).trim().length > 0;
+
+      if(hasManuscriptText){
+        if(!confirm(`「${chapterLabel}」には本文が書かれています。\nこの章を削除すると、本文データも完全に削除され、元に戻せません。\n\n本当によろしいですか？`)) return;
+        const typed = prompt(`最終確認です。本文ごと削除するには、下の欄に「本文」と入力してください。`);
+        if(typed !== '本文'){
+          alert('入力が一致しなかったため、削除を中止しました。');
+          return;
+        }
+      } else {
+        if(!confirm(`「${chapterLabel}」を削除します。よろしいですか？`)) return;
+      }
+
       p.plotChapters = p.plotChapters.filter(c => c.id !== ch.id);
+      if(p.manuscript && p.manuscript[ch.id]) delete p.manuscript[ch.id];
       p.updatedAt = Date.now();
       save();
       renderChapters(p);
