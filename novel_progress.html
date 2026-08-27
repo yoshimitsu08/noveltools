@@ -693,6 +693,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
   color:var(--text3);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
+/* 2026-08-27新設：起動時GitHub SHA照合バッジ。カバー画像中央に大きく表示（カバーが隠れてもよい仕様）。
+   カバー画像より手前に出す必要があるため z-index を明示。 */
+.reel-card .rc-gh-diff-badge {
+  display:none;
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:5;
+  background:#c0392b; color:#fff;
+  font-family:var(--font-ui); font-weight:bold;
+  font-size:0.85rem; letter-spacing:0.1em;
+  padding:6px 10px; border-radius:4px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.5);
+  white-space:nowrap;
+}
+.reel-card.rc-gh-has-diff .rc-gh-diff-badge { display:block; }
 .reel-card .rc-body {
   flex:1; min-width:0;
   padding:10px 14px;
@@ -3979,8 +3993,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // リポジトリ直下にある全ての同期ファイル（manuscript_sync_*.json）を列挙する。
-  // 新端末での「作品一覧から選んで取り込む」機能用。
-  // 戻り値: [{ filename, id, title }]  ※titleはファイル名から推測した簡易表示用（正確な値は復号後にしか分からない）
+  // 新端末での「作品一覧から選んで取り込む」機能、および起動時のSHA照合機能（2026-08-27新設）で使用。
+  // 戻り値: [{ filename, sha, id, title }]  ※titleはファイル名から推測した簡易表示用（正確な値は復号後にしか分からない）
   async function ghListAllSyncFiles(cfg){
     const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/?t=${Date.now()}`, {
       cache: 'no-store',
@@ -3993,7 +4007,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const list = await res.json();
     return list
       .filter(item => item.type === 'file' && item.name.startsWith('manuscript_sync_'))
-      .map(item => ({ filename: item.name }));
+      .map(item => ({ filename: item.name, sha: item.sha }));
   }
 
   // 指定ファイル名の同期ファイルを取得・復号する（IDによる検索を経由しない、ファイル名直指定版）。
@@ -4074,6 +4088,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let deviceName = null;
   let longPressMs = DEFAULT_LONGPRESS_MS;
   let unclassifiedThreshold = DEFAULT_UNCLASSIFIED_THRESHOLD;
+  // 2026-08-27新設：起動時GitHub SHA照合の結果を保持するSet（差分ありと判定された作品IDの集合）。
+  // renderReelCard()が毎回この中身を見て赤バッジの表示/非表示を判定する。
+  let ghDiffProjectIds = new Set();
   let selectorScrollOffset = DEFAULT_SELECTOR_SCROLL_OFFSET;
   let reelSnapMs = DEFAULT_REEL_SNAP_MS;
   let reelBgOpacity = DEFAULT_REEL_BG_OPACITY;
@@ -5000,12 +5017,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(p.pinned) cardClasses.push('pinned');
     if(selectMode) cardClasses.push('select-mode');
     if(selectMode && isChecked) cardClasses.push('rc-checked');
+    // 2026-08-27新設：起動時GitHub SHA照合で「差分あり」と判定された作品に赤バッジを出す
+    if(ghDiffProjectIds.has(p.id)) cardClasses.push('rc-gh-has-diff');
 
     return `
     <div class="${cardClasses.join(' ')}" data-id="${p.id}">
       <div class="rc-cover" data-role="cover" data-phase-label="${escapeHTML(phaseLabel(p))}">
         ${p.pinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="rc-editor-badge">${escapeHTML(p.editor)}</div>` : ''}
+        <div class="rc-gh-diff-badge">⚠ 更新あり</div>
         ${coverHTML}
       </div>
       <div class="rc-body">
@@ -5171,6 +5191,51 @@ h1 .mark { color:var(--accent); font-style:italic; }
     // 2026-08-23新設：「使い方ガイド」を、ネタ帳のさらに後ろ（リール本当の末尾）に固定追加する。
     arr.push(HELP_PSEUDO_CARD);
     return arr;
+  }
+
+  // 2026-08-27新設：起動時GitHub SHA照合。
+  // 「初めてのリール描画」直後に1回だけ呼ばれる想定（renderGrid()の初回呼び出し後、Init末尾から起動）。
+  // - GitHub連携が未設定の場合：この機能自体が不要なため、何もせず無音でreturnする
+  //   （2026-08-27：当初「未設定です」ダイアログを毎起動1回出す案だったが、
+  //   「連携していない＝この機能を使う気がない」と判断し、通知自体を廃止。合意済み）。
+  // - 設定済みの場合：全同期ファイルのSHA一覧を1回のAPI呼び出しで取得し、各作品のp._githubSync.lastSyncedShaと比較。
+  //   不一致（または一度も同期していないのにリモートに同IDのファイルが存在する）場合は「差分あり」と判定し、
+  //   ghDiffProjectIdsに作品IDを登録した上でrenderGrid()を再実行し、赤バッジを反映する。
+  // - 通信自体が失敗した場合（オフライン等）：個別作品への赤バッジは一切出さず（＝分からないだけなので誤情報を出さない）、
+  //   「GitHubとの照合ができませんでした」とダイアログで伝える。
+  async function ghRunStartupDiffCheck(){
+    if(!ghIsConfigured()) return;
+    const cfg = ghLoadConfig();
+    let remoteFiles;
+    try {
+      remoteFiles = await ghListAllSyncFiles(cfg);
+    } catch(_e){
+      alert('GitHubとの照合ができませんでした。\n通信状況をご確認ください。');
+      return;
+    }
+    // 2026-08-27修正：ファイル名からのID抽出は、既存のghFindExistingFile()と同じ
+    // 「新形式（manuscript_sync_<ID>_タイトル.json）はプレフィックス一致、
+    //   旧形式（manuscript_sync_<ID>.json、2026-08-23以前）は完全一致」の判定方式に統一。
+    // （単純な正規表現だと、旧形式ファイルやタイトルにアンダースコアを含む場合の切り出しを誤るため）
+    const remoteShaByProjectId = {};
+    projects.forEach(p => {
+      if(p.isIdeaBook || p.isHelpGuide) return;
+      const newPrefix = ghFileNamePrefix(p);
+      const oldExact = `manuscript_sync_${p.id}.json`;
+      const found = remoteFiles.find(f => f.filename.startsWith(newPrefix) || f.filename === oldExact);
+      if(found) remoteShaByProjectId[p.id] = found.sha;
+    });
+
+    ghDiffProjectIds = new Set();
+    projects.forEach(p => {
+      if(p.isIdeaBook || p.isHelpGuide) return; // 疑似カードは対象外
+      const remoteSha = remoteShaByProjectId[p.id];
+      if(!remoteSha) return; // リモートに存在しない＝まだGitHubに一度も保存していない作品。差分判定の対象外
+      const localSha = p._githubSync ? p._githubSync.lastSyncedSha : null;
+      if(localSha !== remoteSha) ghDiffProjectIds.add(p.id);
+    });
+
+    if(ghDiffProjectIds.size > 0) renderGrid();
   }
 
   function renderGrid(){
@@ -10314,6 +10379,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
   initModalHistoryTracking(); // 2026-08-23新設：個別モーダル群のAndroidバック対応
   renderGrid();
   updateStorageUsageDisplay();
+
+  // 2026-08-27新設：初回リール描画直後に、GitHubとのSHA照合を1回だけ自動実行する。
+  // 非同期のためawaitはせず（起動をブロックしない）、結果が出た時点でrenderGrid()により差分バッジを反映する。
+  ghRunStartupDiffCheck();
 
   // 2026-08-23新設：アプリ起動時点の履歴エントリを「reel」状態として明示しておく。
   // これにより、detail/setting/manuscript/aiHubのどこにいてもAndroidバックボタンで
