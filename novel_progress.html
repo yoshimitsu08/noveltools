@@ -4546,7 +4546,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
       projects = raw ? JSON.parse(raw) : [];
     } catch(_e){ projects = []; }
     // migration: ensure sections exist on older records
+    // 2026-08-28修正：kind==='ideabook'（ネタ帳）は通常作品専用フィールド（sections/plotChapters/manuscript等）
+    // を持たないため、このマイグレーション処理の対象外にする。ネタ帳側の最小限の後方互換補完は別途行う。
     projects.forEach(p => {
+      if(projectKind(p) === 'ideabook'){
+        if(!p.ideaSeeds) p.ideaSeeds = [];
+        if(p.introText === undefined) p.introText = '';
+        if(p.cover === undefined) p.cover = null;
+        return;
+      }
       if(!p.sections) p.sections = defaultSections();
       p.sections.forEach(s => {
         if(s.type === 'characters' && !s.characters) s.characters = [];
@@ -5346,7 +5354,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   function getSorted(){
     const mode = document.getElementById('sortSelect').value;
-    const arr = [...projects];
+    // 2026-08-28修正：projectsにはネタ帳(kind==='ideabook')も混在するため、
+    // reelの通常カードとしては通常作品(kind==='novel'、または未設定＝後方互換)のみを対象にする。
+    // ネタ帳自体はreel末尾のIDEA_BOOK_PSEUDO_CARD（疑似カード）経由でのみアクセスする。
+    const arr = projects.filter(p => projectKind(p) === 'novel');
     if(mode === 'pinned'){
       arr.sort((a,b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
     } else if(mode === 'updated'){
@@ -5389,7 +5400,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     // （単純な正規表現だと、旧形式ファイルやタイトルにアンダースコアを含む場合の切り出しを誤るため）
     const remoteShaByProjectId = {};
     projects.forEach(p => {
-      if(p.isIdeaBook || p.isHelpGuide) return;
+      if(p.isIdeaBook || p.isHelpGuide || projectKind(p) === 'ideabook') return;
       const newPrefix = ghFileNamePrefix(p);
       const oldExact = `manuscript_sync_${p.id}.json`;
       const found = remoteFiles.find(f => f.filename.startsWith(newPrefix) || f.filename === oldExact);
@@ -5398,7 +5409,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     ghDiffProjectIds = new Set();
     projects.forEach(p => {
-      if(p.isIdeaBook || p.isHelpGuide) return; // 疑似カードは対象外
+      if(p.isIdeaBook || p.isHelpGuide || projectKind(p) === 'ideabook') return; // 疑似カード・ネタ帳は対象外
       const remoteSha = remoteShaByProjectId[p.id];
       if(!remoteSha) return; // リモートに存在しない＝まだGitHubに一度も保存していない作品。差分判定の対象外
       const localSha = p._githubSync ? p._githubSync.lastSyncedSha : null;
