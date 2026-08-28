@@ -5412,6 +5412,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(p.pinned) card.classList.add('pinned'); else card.classList.remove('pinned');
       card.classList.toggle('select-mode', selectMode);
       card.classList.toggle('rc-checked', selectMode && isChecked);
+      // 2026-08-28修正：GitHub関連の2バッジ（差分あり／未保存）は外側divのクラスで
+      // 表示制御しているが、上のcard.innerHTML置換では中身しか更新されず外側divの
+      // クラスは古いまま残っていた。pinned等と同様、ここで明示的に同期する
+      // （保存直後にリールへ戻っても未保存バッジが消えない不具合の原因だった）。
+      card.classList.toggle('rc-gh-has-diff', ghDiffProjectIds.has(p.id));
+      card.classList.toggle('rc-gh-has-unsaved', ghIsConfigured() && ghHasUnsyncedLocalChanges(p));
     });
     bindReelCardEvents();
     reelUpdateSelectedClass();
