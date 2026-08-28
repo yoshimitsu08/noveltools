@@ -2826,6 +2826,38 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 </div>
 
+<!-- ============ GitHub Conflict Compare Modal (2026-08-28新設) ============ -->
+<!-- Push時に409（競合）を検知した際、ローカル版とリモート版の軽量メタ情報を比較し、
+     ユーザーが「上書き」か「取得」かを選べるようにするモーダル。項目は作品丸ごと単位（フィールド単位の選択は未対応）。 -->
+<div class="modal-overlay" id="githubConflictModalOverlay" style="z-index:520;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚠️ 競合を検知しました</h2>
+      <button class="modal-close" id="githubConflictModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note">
+        この端末が最後に把握した時点から、GitHub上のデータが更新されています。以下の内容を比較し、どちらを採用するか選んでください。
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">この端末の内容</div>
+        <div id="githubConflictLocalStats" style="font-size:0.85rem; line-height:1.8; color:var(--text2);"></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">GitHub上の内容</div>
+        <div id="githubConflictRemoteStats" style="font-size:0.85rem; line-height:1.8; color:var(--text2);"></div>
+      </div>
+      <div class="detail-section" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn primary" id="githubConflictOverwriteBtn" style="flex:1;">この端末の内容で上書き</button>
+        <button class="btn" id="githubConflictFetchBtn" style="flex:1;">GitHubの内容を取得</button>
+      </div>
+      <div class="chapter-note">
+        どちらか一方の内容がすべて採用され、もう一方の変更は失われます（項目ごとの部分的な取捨選択には対応していません）。迷う場合は「×」で閉じて、後でもう一度確認できます。
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ GitHub Sync Toast (2026-08-23新設) ============ -->
 <div class="copy-toast" id="githubSyncToast" style="display:none;"></div>
 
@@ -4924,6 +4956,24 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function chapterDoneCount(p){
     // 進捗バーの分子：ステータスが「完了」の章数
     return (p.plotChapters||[]).filter(ch => chapterStatus(p, ch.id) === 'done').length;
+  }
+
+  // GitHub競合比較モーダル用：project（ローカル・リモートどちらでも）から
+  // 更新日時・文字数・章数の軽量メタ情報を算出する。
+  // composeSelectorText/ensureSelectorを流用し、本文プレビュー箇所と同じ計算方法で文字数を揃える。
+  function computeProjectStats(project){
+    const chapters = project.plotChapters || [];
+    let totalChars = 0;
+    chapters.forEach(ch => {
+      const entry = project.manuscript && project.manuscript[ch.id];
+      const selector = entry ? ensureSelector(entry) : { series:[], rows:[], seriesCards:{} };
+      totalChars += composeSelectorText(selector).length;
+    });
+    return {
+      updatedAt: project.updatedAt || null,
+      chapterCount: chapters.length,
+      totalChars
+    };
   }
 
   function computePhase(p){
@@ -7146,7 +7196,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const expectedSha = p._githubSync ? p._githubSync.lastSyncedSha : undefined;
       let result = await ghPushProject(cfg, p, expectedSha);
       if(!result.ok && result.conflict){
-        alert('GitHub上のデータが、この端末が最後に把握した時点から更新されています。上書きすると他端末の変更が失われる可能性があります。先に「GitHubから取得」で最新内容を確認してください。');
+        // 2026-08-28：無条件alertではなく、ローカル/リモートの比較モーダルを開いて選ばせる。
+        await openGithubConflictModal(cfg, p);
         return;
       }
       if(!result.ok && result.needsConfirmation){
@@ -7179,6 +7230,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   };
 
+  // Pullの中核処理（confirm済みの前提で実行）。通常のPullボタンと、競合比較モーダルの
+  // 「GitHubの内容を取得」ボタンの両方から呼べるよう共通関数として切り出す。
+  // remoteはghFetchRemoteの戻り値を渡せば再取得を省略できる（省略時はここで取得する）。
+  async function ghPullProjectInto(cfg, p, remote){
+    if(!remote){
+      remote = await ghFetchRemote(cfg, p);
+    }
+    if(!remote){
+      alert('GitHub上にはまだこの作品のデータがありません。');
+      return false;
+    }
+    const idx = projects.findIndex(x => x.id === p.id);
+    const incoming = remote.payload.project;
+    incoming.id = p.id; // IDはローカル側を維持（作品としての同一性を保つ）
+    incoming._githubSync = null; // 直後にghMarkSyncedで正しい値を入れる
+    projects[idx] = incoming;
+    ghMarkSynced(projects[idx], remote.sha);
+    save();
+    renderGrid();
+    ghShowToast('☁️ GitHubから取得しました');
+    return true;
+  }
+
   document.getElementById('githubSyncPullBtn').onclick = async () => {
     if(ghSyncInProgress) return; // 処理中の連打を無視
     ghSyncInProgress = true;
@@ -7199,15 +7273,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(!confirm('GitHub上の内容で、この端末のデータを上書きします。この端末で未保存の変更があれば失われます。よろしいですか？')){
         return;
       }
-      const idx = projects.findIndex(x => x.id === p.id);
-      const incoming = remote.payload.project;
-      incoming.id = p.id; // IDはローカル側を維持（作品としての同一性を保つ）
-      incoming._githubSync = null; // 直後にghMarkSyncedで正しい値を入れる
-      projects[idx] = incoming;
-      ghMarkSynced(projects[idx], remote.sha);
-      save();
-      renderGrid();
-      ghShowToast('☁️ GitHubから取得しました');
+      const ok = await ghPullProjectInto(cfg, p, remote);
+      if(!ok) return;
       // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一（詳細は上記コメント参照）。
       appNavBack();
     } catch(err){
@@ -7219,6 +7286,106 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ghSyncInProgress = false;
     }
   };
+
+  // ---- GitHub競合比較モーダル（2026-08-28新設） ----
+  // Push時に409を検知した際に開く。ローカル/リモートの軽量メタ情報（更新日時・文字数・章数）を
+  // 並べて表示し、「この端末の内容で上書き」「GitHubの内容を取得」のどちらかを選ばせる。
+  // 選択の粒度は作品丸ごと単位（フィールド単位の部分的な取捨選択は今回のスコープ外）。
+  function formatStatsHtml(stats){
+    const dateStr = stats.updatedAt ? new Date(stats.updatedAt).toLocaleString('ja-JP') : '（不明）';
+    return `更新日時：${escapeHTML(dateStr)}<br>文字数：${stats.totalChars.toLocaleString()} 字<br>章数：${stats.chapterCount} 章`;
+  }
+
+  async function openGithubConflictModal(cfg, p){
+    const overlay = document.getElementById('githubConflictModalOverlay');
+    const localBox = document.getElementById('githubConflictLocalStats');
+    const remoteBox = document.getElementById('githubConflictRemoteStats');
+    const overwriteBtn = document.getElementById('githubConflictOverwriteBtn');
+    const fetchBtn = document.getElementById('githubConflictFetchBtn');
+
+    localBox.textContent = '';
+    remoteBox.textContent = '確認中…';
+    overwriteBtn.disabled = true;
+    fetchBtn.disabled = true;
+    overlay.classList.add('active');
+
+    let remote;
+    try {
+      remote = await ghFetchRemote(cfg, p);
+    } catch(err){
+      overlay.classList.remove('active');
+      alert(`GitHub上の内容の確認に失敗しました：${err.message}`);
+      return;
+    }
+    if(!remote){
+      overlay.classList.remove('active');
+      alert('GitHub上のファイルが見つかりませんでした。お手数ですが、もう一度お試しください。');
+      return;
+    }
+
+    const localStats = computeProjectStats(p);
+    const remoteStats = computeProjectStats(remote.payload.project);
+    localBox.innerHTML = formatStatsHtml(localStats);
+    remoteBox.innerHTML = formatStatsHtml(remoteStats);
+    overwriteBtn.disabled = false;
+    fetchBtn.disabled = false;
+
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        overlay.classList.remove('active');
+        overwriteBtn.onclick = null;
+        fetchBtn.onclick = null;
+        document.getElementById('githubConflictModalClose').onclick = null;
+      };
+
+      overwriteBtn.onclick = async () => {
+        overwriteBtn.disabled = true;
+        fetchBtn.disabled = true;
+        try {
+          // この時点で確認したリモートSHAを使ってPUTし直す。
+          // 確認中にさらに他端末が更新していた場合は、通常のPushと同様に409が返り得るため
+          // その場合はもう一度このモーダルで確認し直す（ここでは単純に案内のみ）。
+          const result = await ghPushProject(cfg, p, remote.sha, true);
+          if(!result.ok && result.conflict){
+            alert('確認中に他端末がさらに更新したため、保存を中断しました。お手数ですが、もう一度お試しください。');
+            cleanup();
+            resolve(false);
+            return;
+          }
+          ghMarkSynced(p, result.newSha);
+          save();
+          ghShowToast('☁️ GitHubに保存しました');
+          cleanup();
+          appNavBack();
+          resolve(true);
+        } catch(err){
+          alert(`保存に失敗しました：${err.message}`);
+          overwriteBtn.disabled = false;
+          fetchBtn.disabled = false;
+        }
+      };
+
+      fetchBtn.onclick = async () => {
+        overwriteBtn.disabled = true;
+        fetchBtn.disabled = true;
+        try {
+          const ok = await ghPullProjectInto(cfg, p, remote);
+          cleanup();
+          if(ok) appNavBack();
+          resolve(ok);
+        } catch(err){
+          alert(`取得に失敗しました：${err.message}`);
+          overwriteBtn.disabled = false;
+          fetchBtn.disabled = false;
+        }
+      };
+
+      document.getElementById('githubConflictModalClose').onclick = () => {
+        cleanup();
+        resolve(false);
+      };
+    });
+  }
 
   // ---- GitHub Import (new device向け：作品一覧から選んで取り込む, 2026-08-23新設) ----
   async function openGithubImportModal(){
