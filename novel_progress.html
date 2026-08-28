@@ -4722,6 +4722,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   }
 
+  // 2026-08-27新設・2026-08-28復元：ネタ帳「AIで記法を整える」のテンプレート選択欄(select)を、
+  // promptTemplates['ideaSeedFormat']の現在の内容で再構築する。saveTemplates()から呼ばれる。
+  // 2026-08-28時点：ideaSeedTemplateSelect要素は新モーダルにまだ未実装のため、
+  // if(!sel) returnにより実質何もしない状態。要素を復活させる場合はここを見直すこと。
+  function refreshIdeaSeedTemplateSelect(){
+    const sel = document.getElementById('ideaSeedTemplateSelect');
+    if(!sel) return; // ネタ帳モーダルがまだ初期化されていない場合は何もしない
+    const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
+    const savedId = localStorage.getItem('ideaSeedFormatSelectedTemplateId');
+    const validId = list.some(t => t.id === savedId) ? savedId : (list[0] && list[0].id);
+    sel.innerHTML = list.map(t => `<option value="${t.id}">${escapeHTML(t.name || '無題テンプレート')}</option>`).join('');
+    if(validId) sel.value = validId;
+  }
+
   function saveTemplates(){
     try { localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(promptTemplates)); }
     catch(_e){ alert('テンプレートの保存に失敗しました。'); }
@@ -6465,6 +6479,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
       renderIdeabookSeedsList();
       closeSeedImportModal();
     };
+  }
+
+  // 2026-08-23新設：使い方ガイド
+  // 2026-08-28復元：ネタ帳Phase2の旧ブロック削除範囲に誤って巻き込まれ消失していたため復元。
+  function openHelpGuide(){
+    document.getElementById('helpGuideModalOverlay').classList.add('active');
+  }
+  function closeHelpGuide(){
+    document.getElementById('helpGuideModalOverlay').classList.remove('active');
+  }
+  function initHelpGuideEvents(){
+    document.getElementById('helpGuideModalClose').onclick = closeHelpGuide;
+    document.getElementById('helpGuideModalOverlay').addEventListener('click', (e) => {
+      if(e.target.id === 'helpGuideModalOverlay') closeHelpGuide();
+    });
+    document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        const tab = btn.dataset.helptab;
+        document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('helpTabManual').classList.toggle('active', tab === 'manual');
+        document.getElementById('helpTabAi').classList.toggle('active', tab === 'ai');
+      };
+    });
   }
 
   // 2026-08-21変更：originEl（拡大の起点となるDOM要素）を渡すと、その位置・サイズから
