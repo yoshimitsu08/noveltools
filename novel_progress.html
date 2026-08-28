@@ -3997,6 +3997,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
       lastSyncedAt: Date.now(),
       lastSyncedUpdatedAt: p.updatedAt
     };
+    // 2026-08-28修正：保存/取得どちらでも「同期が完了した」ことに変わりないため、
+    // 起動時差分照合で登録された赤バッジ（他端末更新あり）もここで解除する。
+    // 従来はここが漏れており、Pull成功後もghDiffProjectIdsに古いIDが残り続け、
+    // 「戻る」で再描画されるたびに赤バッジが復活していた
+    // （renderReelCard自体は正しく判定しているが、判定元のSetが更新されていなかった）。
+    if(ghDiffProjectIds.has(p.id)) ghDiffProjectIds.delete(p.id);
   }
   function ghHasUnsyncedLocalChanges(p){
     if(!p._githubSync) return true; // 一度も同期していない
