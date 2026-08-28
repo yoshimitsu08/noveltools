@@ -7107,15 +7107,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(currentDetailId) openGithubSyncModal(currentDetailId);
   };
   document.getElementById('githubSyncModalClose').onclick = () => {
-    document.getElementById('githubSyncModalOverlay').classList.remove('active');
-    // 2026-08-26修正：GitHub同期モーダルは汎用モーダル履歴スタックの管理下にあり、
-    // detailは既に履歴上に積まれたまま（下に隠れていただけ）のため、二重に積まない。
-    if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId, null, /*skipHistoryPush=*/true);
+    // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一。
+    // 実際の詳細モーダル復元はapplyAppNavState内のgithubSyncModalOverlay専用処理が行う。
+    appNavBack();
   };
   document.getElementById('githubSyncModalOverlay').addEventListener('click', (e) => {
     if(e.target.id === 'githubSyncModalOverlay'){
-      document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      if(currentGithubSyncProjectId) openDetail(currentGithubSyncProjectId, null, /*skipHistoryPush=*/true);
+      appNavBack();
     }
   });
 
@@ -7157,8 +7155,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ghMarkSynced(p, result.newSha);
       save();
       ghShowToast('☁️ GitHubに保存しました');
-      document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      openDetail(p.id, null, /*skipHistoryPush=*/true);
+      // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一（詳細は上記コメント参照）。
+      appNavBack();
     } catch(err){
       alert(`保存に失敗しました：${err.message}`);
     } finally {
@@ -7198,8 +7196,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
       renderGrid();
       ghShowToast('☁️ GitHubから取得しました');
-      document.getElementById('githubSyncModalOverlay').classList.remove('active');
-      openDetail(p.id, null, /*skipHistoryPush=*/true);
+      // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一（詳細は上記コメント参照）。
+      appNavBack();
     } catch(err){
       alert(`取得に失敗しました：${err.message}`);
     } finally {
@@ -7697,6 +7695,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(overlayId === 'imagePromptModalOverlay' && imagePromptOpenedFromDetailId){
         const backId = imagePromptOpenedFromDetailId;
         imagePromptOpenedFromDetailId = null;
+        openDetail(backId, null, true); // skipHistoryPush=true：履歴は既にこのdetailの状態にある
+      }
+
+      // 2026-08-28新設（往復不可バグ対応・第3弾）：GitHub同期モーダルも画像プロンプトと同様、
+      // detailModalOverlayを閉じずにその上に重なる形で開かれるモーダルのため、同じ理由で
+      // swapBackId方式には乗らない。旧実装ではモーダルを閉じる4箇所（×ボタン・背景タップ・
+      // 保存成功時・取得成功時）がそれぞれ「直接classList.removeで閉じてからopenDetailを呼ぶ」
+      // 形になっており、その直後にこのMutationObserverが「モーダルが閉じられた」と検知して
+      // 自動でhistory.back()を追加発火させてしまい、二重の画面遷移が競合していた
+      // （保存直後、リールに戻ると未保存バッジが消えないまま残る不具合の原因）。
+      // 以後はモーダルを閉じる操作自体をhistory.back()に統一し、実際の復元はここでのみ行う。
+      if(overlayId === 'githubSyncModalOverlay' && currentGithubSyncProjectId){
+        const backId = currentGithubSyncProjectId;
         openDetail(backId, null, true); // skipHistoryPush=true：履歴は既にこのdetailの状態にある
       }
 
