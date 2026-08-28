@@ -5076,8 +5076,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return autoResizeMeasureEl;
   }
 
+  // 2026-08-28修正：オートリサイズの高さ再計算だけを外部から直接呼べる専用関数。
+  // 従来は ta.dispatchEvent(new Event('input')) で疑似的に発火させていたが、
+  // 同じtextareaにoninput（本文保存・p.updatedAt更新）が別途登録されている場合、
+  // 「高さを合わせたいだけ」のつもりが本文保存処理まで誤爆させてしまう不具合があった
+  // （GitHub同期の「未同期扱い」誤判定の根本原因）。以後は必ずこちらを使う。
+  function triggerAutoResize(ta){
+    if(ta && ta._autoResizeFn) ta._autoResizeFn();
+  }
+
   function enableAutoResize(ta){
-    if(!ta || ta.dataset.autoResizeBound) return;
+    if(!ta) return;
+    if(ta.dataset.autoResizeBound){
+      // 既にbind済みでも、resize関数自体は呼べるようにしておく
+      return;
+    }
     ta.dataset.autoResizeBound = '1';
     const resize = () => {
       // textarea自体の height:auto リセットは行わず、隠しdivに同条件でテキストを流し込んで高さを測る。
@@ -5100,6 +5113,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       }
     };
     ta.addEventListener('input', resize);
+    ta._autoResizeFn = resize; // triggerAutoResize()から直接呼べるよう保持
     // 初期表示時（既存の値が入っている場合）にも高さを合わせる
     requestAnimationFrame(resize);
   }
@@ -6401,8 +6415,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
     };
     enableAutoResize(memoTa);
-    // モーダルを開き直すたびに、既存内容に合わせた高さへ再計算する（enableAutoResize内のresizeロジックと統一）
-    memoTa.dispatchEvent(new Event('input'));
+    // モーダルを開き直すたびに、既存内容に合わせた高さへ再計算する（oninputは誤爆させない）
+    triggerAutoResize(memoTa);
     document.getElementById('detailMemoCopyBtn').onclick = async () => {
       if(!memoTa.value){ alert('コピーするメモがありません'); return; }
       await copyTextWithToast(memoTa.value);
@@ -6416,8 +6430,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
     };
     enableAutoResize(introTa);
-    // モーダルを開き直すたびに、既存内容に合わせた高さへ再計算する（enableAutoResize内のresizeロジックと統一）
-    introTa.dispatchEvent(new Event('input'));
+    // モーダルを開き直すたびに、既存内容に合わせた高さへ再計算する（oninputは誤爆させない）
+    triggerAutoResize(introTa);
     document.getElementById('detailIntroCopyBtn').onclick = async () => {
       if(!introTa.value){ alert('コピーする紹介文がありません'); return; }
       await copyTextWithToast(introTa.value);
@@ -6449,7 +6463,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // 2026-08-23修正：このパスでもauto-resize-textareaの高さを実寸確定後に再計算する
       requestAnimationFrame(() => {
         modal.querySelectorAll('.auto-resize-textarea').forEach(ta => {
-          ta.dispatchEvent(new Event('input'));
+          triggerAutoResize(ta);
         });
       });
       return;
@@ -6486,7 +6500,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           // 高さ計算が走ると、clientWidthが正しく取れず異常に大きい高さになるバグの対策。
           // 実寸が確定したこのタイミングで、モーダル内のauto-resize-textareaを改めて再計算する。
           modal.querySelectorAll('.auto-resize-textarea').forEach(ta => {
-            ta.dispatchEvent(new Event('input'));
+            triggerAutoResize(ta);
           });
         }, DETAIL_MODAL_ANIM_MS);
       });
@@ -7579,7 +7593,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(btn.dataset.page){
         requestAnimationFrame(() => {
           document.querySelectorAll(`#${btn.dataset.page} .auto-resize-textarea`).forEach(ta => {
-            ta.dispatchEvent(new Event('input'));
+            triggerAutoResize(ta);
           });
         });
       }
@@ -7602,7 +7616,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(viewId === 'settingView'){
       requestAnimationFrame(() => {
         document.querySelectorAll('#settingView .auto-resize-textarea').forEach(ta => {
-          ta.dispatchEvent(new Event('input'));
+          triggerAutoResize(ta);
         });
       });
     }
@@ -10124,7 +10138,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     wrap.querySelectorAll('.image-prompt-chapter-textarea').forEach(ta => {
       enableAutoResize(ta);
-      ta.dispatchEvent(new Event('input'));
+      triggerAutoResize(ta);
       ta.addEventListener('input', (e) => {
         const p2 = projects.find(x=>x.id===currentImagePromptProjectId);
         if(!p2) return;
