@@ -982,6 +982,62 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .idea-tab-page { display:none; }
 .idea-tab-page.active { display:block; }
 
+/* 2026-08-28新設：ネタ帳一覧カード（reel-cardのサイズ感を踏襲した縮小版、縦リスト表示用） */
+.ideabook-list-card {
+  display:flex; flex-direction:column;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px;
+  margin-bottom:8px;
+  cursor:pointer;
+  transition:border-color 0.15s;
+}
+.ideabook-list-card:hover { border-color:var(--accent); }
+.ideabook-list-card .iblc-row { display:flex; gap:10px; }
+.ideabook-list-card .iblc-cover {
+  width:100px; flex-shrink:0; align-self:center;
+  aspect-ratio:16/9;
+  border-radius:6px;
+  overflow:hidden;
+  background:var(--bg3);
+  display:flex; align-items:center; justify-content:center;
+}
+.ideabook-list-card .iblc-cover img { width:100%; height:100%; object-fit:cover; }
+.ideabook-list-card .iblc-body {
+  flex:1; min-width:0;
+  display:flex; flex-direction:column; justify-content:center; gap:4px;
+}
+.ideabook-list-card .iblc-title {
+  font-size:0.95rem; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ideabook-list-card .iblc-meta {
+  font-size:0.6rem; color:var(--text3);
+  display:flex; gap:10px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ideabook-list-card .iblc-meta .num { color:var(--accent); }
+.ideabook-list-card .iblc-intro {
+  font-size:0.7rem; color:var(--text2);
+  margin-top:8px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ideabook-list-empty {
+  text-align:center; color:var(--text3);
+  padding:24px 0; font-size:0.85rem;
+}
+
+/* 2026-08-28新設：PC版のみ、ネタ帳一覧モーダルをメモ帳(左)・本一覧(右)の2ペインにする */
+@media (min-width: 860px) {
+  #ideaBookListModalOverlay .modal-body {
+    display:flex; gap:20px; align-items:flex-start;
+  }
+  #ideaBookListModalOverlay .modal-body > div:first-child { flex:1; min-width:0; }
+  #ideaBookListModalOverlay .modal-body > div:nth-child(2) { flex:1; min-width:0; }
+  #memoPadTextarea { flex:1; min-height:320px; }
+}
+
 /* 2026-08-23新設：使い方ガイドのステップカード */
 .help-step-card {
   display:flex;
@@ -3054,62 +3110,69 @@ h1 .mark { color:var(--accent); font-style:italic; }
   </div>
 </div>
 
-<!-- ============ Idea Book Modal (ネタ帳) 2026-08-23新設 ============ -->
-<div class="modal-overlay" id="ideaBookModalOverlay">
+<!-- ============ Idea Book List Modal (ネタ帳一覧：メモ帳＋本一覧) 2026-08-28再設計 ============ -->
+<div class="modal-overlay" id="ideaBookListModalOverlay">
   <div class="modal">
     <div class="modal-header">
       <h2 style="color:#9b8ac4;">ネタ帳</h2>
-      <button class="modal-close" id="ideaBookModalClose">×</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="hamburger-btn" id="ideaBookListHamburgerBtn">☰</button>
+        <button class="modal-close" id="ideaBookListModalClose">×</button>
+      </div>
+      <div class="dropdown-menu" id="ideaBookListDropdown" style="top:52px;">
+        <button type="button" class="dropdown-item" id="ideaBookCreateBtn">＋ 新規ネタ帳を作成</button>
+        <div class="dropdown-divider"></div>
+        <div style="padding:8px 16px 4px; font-size:0.75rem; color:var(--text3);">メモ帳の行数</div>
+        <div style="display:flex; align-items:center; gap:8px; padding:4px 16px 10px;">
+          <input type="number" id="memoPadRowsInput" min="1" max="30" style="width:64px;">
+          <span style="font-size:0.75rem; color:var(--text3);">行</span>
+        </div>
+      </div>
     </div>
-    <div class="idea-seed-random" id="ideaSeedRandomBox">
-      <div class="idea-seed-random-label">ヒラメキの種<span class="idea-seed-random-id" id="ideaSeedRandomId"></span></div>
+
+    <div class="idea-seed-random" id="ideaBookListRandomBox">
+      <div class="idea-seed-random-label">ヒラメキの種<span class="idea-seed-random-id" id="ideaBookListRandomId"></span></div>
       <div class="idea-seed-random-viewport">
-        <div class="idea-seed-random-text" id="ideaSeedRandomText">（まだ種が登録されていません）</div>
+        <div class="idea-seed-random-text" id="ideaBookListRandomText">（まだ種が登録されていません）</div>
       </div>
     </div>
 
-    <div class="modal-body idea-modal-body">
+    <div class="modal-body">
+      <div style="font-size:0.75rem; color:var(--text3); margin-bottom:6px;">メモ帳</div>
+      <textarea id="memoPadTextarea" placeholder="思いついたネタを書き留める" style="width:100%; resize:none; box-sizing:border-box;"></textarea>
 
-      <div class="idea-modal-left">
-        <div class="idea-entry-form">
-          <input type="text" id="ideaNoteTitleInput" placeholder="一言タイトル" maxlength="60">
-          <textarea id="ideaNoteBodyInput" class="auto-resize-textarea" placeholder="補足メモ（自由に書き足してください）" style="min-height:60px;"></textarea>
-          <button type="button" class="btn primary" id="ideaNoteAddBtn" style="width:100%;">＋ ネタを追加</button>
-        </div>
+      <div style="font-size:0.75rem; color:var(--text3); margin:16px 0 6px;">ネタ帳一覧</div>
+      <div id="ideabookListWrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Idea Book Editor Modal (ネタ帳 編集画面：1冊の中身) 2026-08-28新設 ============ -->
+<div class="modal-overlay" id="ideabookEditorModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 style="color:#9b8ac4;" id="ideabookEditorTitle">ネタ帳</h2>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="hamburger-btn" id="ideabookEditorHamburgerBtn">☰</button>
+        <button class="modal-close" id="ideabookEditorModalClose">×</button>
       </div>
-
-      <div class="idea-modal-right">
-        <div class="idea-tab-nav">
-          <button type="button" class="idea-tab-btn active" data-ideatab="notes">自分のネタ一覧</button>
-          <button type="button" class="idea-tab-btn" data-ideatab="seeds">取り込んだ種一覧</button>
-        </div>
-
-        <div class="idea-tab-page active" id="ideaTabNotes">
-          <div id="ideaNotesList"></div>
-        </div>
-        <div class="idea-tab-page" id="ideaTabSeeds">
-          <div style="display:flex; justify-content:flex-end; margin-bottom:8px; position:relative;">
-            <button type="button" class="hamburger-btn" id="ideaSeedHamburgerBtn">☰</button>
-            <div class="dropdown-menu" id="ideaSeedDropdown">
-              <button type="button" class="dropdown-item" id="ideaSeedFormatPromptBtn">🤖 AIで記法を整える</button>
-              <div class="idea-seed-template-select-wrap" style="padding:4px 16px 10px;">
-                <select id="ideaSeedTemplateSelect" style="width:100%;"></select>
-              </div>
-              <div class="dropdown-divider"></div>
-              <button type="button" class="dropdown-item" id="openSeedImportBtn">＋ 種を取り込む</button>
-              <div class="dropdown-divider"></div>
-              <button type="button" class="dropdown-item" id="ideaSeedExportBtn">📥 種をエクスポート</button>
-              <button type="button" class="dropdown-item" id="ideaSeedImportFileBtn">📤 種をインポート</button>
-              <input type="file" id="ideaSeedImportFileInput" accept="application/json" style="display:none;">
-            </div>
-          </div>
-          <div class="idea-seed-search-box">
-            <input type="text" id="ideaSeedSearchInput" placeholder="🔍 取り込んだ種を検索（キーワード）">
-          </div>
-          <div id="ideaSeedsList"></div>
-        </div>
+      <div class="dropdown-menu" id="ideabookEditorDropdown" style="top:52px;">
+        <button type="button" class="dropdown-item" id="ideabookOpenSeedImportBtn">＋ ヒラメキの種を追加</button>
       </div>
+    </div>
 
+    <div class="idea-seed-random" id="ideabookEditorRandomBox">
+      <div class="idea-seed-random-label">ヒラメキの種<span class="idea-seed-random-id" id="ideabookEditorRandomId"></span></div>
+      <div class="idea-seed-random-viewport">
+        <div class="idea-seed-random-text" id="ideabookEditorRandomText">（まだ種が登録されていません）</div>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="idea-seed-search-box">
+        <input type="text" id="ideaSeedSearchInput" placeholder="🔍 種を検索（キーワード）">
+      </div>
+      <div id="ideaSeedsList"></div>
     </div>
   </div>
 </div>
@@ -4153,8 +4216,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     cover: IDEA_BOOK_COVER_DATAURL,
     pinned: false
   };
-  const IDEA_NOTES_STORAGE_KEY = 'manuscript_idea_notes_v1'; // 自分で書いたネタ一覧
-  const IDEA_SEEDS_STORAGE_KEY = 'manuscript_idea_seeds_v1'; // 取り込んだ種一覧（フェーズ1はダミーデータのみ）
+  // 2026-08-28削除：IDEA_NOTES_STORAGE_KEY / IDEA_SEEDS_STORAGE_KEY（旧グローバル単一データ方式）は
+  // ネタ帳ごとに個別のideaSeedsを持つ方式（p.ideaSeeds）へ移行したため不要。
+  // メモ帳の新ストレージキーはMEMO_PAD_STORAGE_KEY（後方に定義）。
 
   // 2026-08-23新設：使い方ガイド（リール末尾固定の疑似カード、ネタ帳のさらに後ろ）用の定数
   const HELP_COVER_DATAURL = "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20400%20225%22%3E%0A%3Crect%20width%3D%22400%22%20height%3D%22225%22%20fill%3D%22%23211f1b%22/%3E%0A%3Ccircle%20cx%3D%22200%22%20cy%3D%2295%22%20r%3D%2242%22%20fill%3D%22none%22%20stroke%3D%22%239b8ac4%22%20stroke-width%3D%224%22/%3E%0A%3Ctext%20x%3D%22200%22%20y%3D%22112%22%20font-family%3D%22Georgia%2C%20serif%22%20font-size%3D%2256%22%20fill%3D%22%239b8ac4%22%20text-anchor%3D%22middle%22%3E%3F%3C/text%3E%0A%3Ctext%20x%3D%22200%22%20y%3D%22175%22%20font-family%3D%22Courier%20New%2C%20monospace%22%20font-size%3D%2216%22%20fill%3D%22%23a09880%22%20text-anchor%3D%22middle%22%20letter-spacing%3D%222%22%3EHELP%20GUIDE%3C/text%3E%0A%3C/svg%3E";
@@ -4845,67 +4909,35 @@ h1 .mark { color:var(--accent); font-style:italic; }
     reader.readAsText(file);
   }
 
-  // ---------- Export / Import (ヒラメキの種：全件ひとまとめ) 2026-08-26新設 ----------
-  function exportIdeaSeeds(){
-    if(ideaSeeds.length === 0){
-      alert('エクスポートできる種がありません。');
-      return;
-    }
-    const payload = {
-      exportedFrom: 'Manuscript',
-      exportKind: 'ideaSeeds',
-      exportVersion: 1,
-      exportedAt: new Date().toISOString(),
-      seeds: ideaSeeds
+  // 2026-08-28削除：exportIdeaSeeds/importIdeaSeedsFromFile（種の全件エクスポート/インポート）は
+  // ネタ帳Phase2再設計に伴い呼び出し元（旧ハンバーガーメニュー）が無くなったため削除。
+  // 必要になった場合は、対象を「currentIdeabook().ideaSeeds」に変更した上で作り直すこと。
+
+  // 2026-08-28新設：ネタ帳（Idea Book）Phase 2。ネタ帳再設計に伴い、
+  // projects配列内でkind:'ideabook'のオブジェクトとして通常作品と同格に扱う。
+  // 既存データへのkind一括書き込みは行わず、読み出し側でprojectKind(p)により既定値'novel'を補う（安全側）。
+  function newIdeabookSkeleton(){
+    return {
+      id: uid(),
+      kind: 'ideabook',
+      title: '',
+      cover: null,
+      introText: '', // ネタ帳一覧カードの概要欄として流用
+      ideaSeeds: [], // このネタ帳固有のヒラメキの種（旧：グローバル変数1個→新：ネタ帳ごとに個別）
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
-    const json = JSON.stringify(payload, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `manuscript_idea_seeds_${todayISO()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
-  // インポート時は既存の種を上書きせず、IDを振り直して追記する（安全策：誤って既存データを消さないため）
-  function importIdeaSeedsFromFile(file){
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      let payload;
-      try {
-        payload = JSON.parse(e.target.result);
-      } catch(_e){
-        alert('ファイルを読み込めませんでした。正しいエクスポートファイルか確認してください。');
-        return;
-      }
-      const list = Array.isArray(payload) ? payload : (Array.isArray(payload && payload.seeds) ? payload.seeds : null);
-      if(!list){
-        alert('「ヒラメキの種」のデータとして認識できませんでした。');
-        return;
-      }
-      const validItems = list.filter(s => s && typeof s.text === 'string' && s.text.trim().length > 0);
-      if(validItems.length === 0){
-        alert('取り込める種が見つかりませんでした。');
-        return;
-      }
-      let nextNum = nextIdeaSeedId();
-      validItems.forEach(s => {
-        nextNum += 1;
-        ideaSeeds.push({ id: 'seed-' + String(nextNum).padStart(4,'0'), text: s.text.trim() });
-      });
-      saveIdeaSeeds();
-      renderIdeaSeedsList();
-      alert(`${validItems.length}件の種をインポートしました。`);
-    };
-    reader.readAsText(file);
+  // p.kindが未設定の既存データ（通常作品）は'novel'として扱う。データファイル自体の書き換えは行わない。
+  function projectKind(p){
+    return p.kind || 'novel';
   }
 
   function newProjectSkeleton(){
     return {
       id: uid(),
+      kind: 'novel',
       title: '',
       author: '',
       editor: '',
@@ -5538,7 +5570,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           // ネタ帳は選択モード（一括操作）の対象外。中央にいる時は、カード全体タップでネタ帳モーダルを開く。
           const offset = parseInt(card.dataset.offset, 10) || 0;
           if(offset === 0){
-            openIdeaBook();
+            openIdeaBookList();
             return;
           }
           reelGoTo(reelCenterIndex + offset, true);
@@ -6077,47 +6109,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
       rows.map(r => `<span>${escapeHTML(r.label)}：${escapeHTML(r.value)}</span>`).join('');
   }
 
-  // ================= ネタ帳（Idea Book）2026-08-23新設 =================
-  // フェーズ1：静的モチーフ集（ダミー）のランダム表示 ＋ 自分で書いたネタの記入・一覧・編集機能。
-  // 「取り込んだ種」の実データ取り込み（UpNoteからのパーサー経由取り込み）はフェーズ2で実装予定、
-  // 今回はUI確認用のダミーデータのみを表示する。
-  // 2026-08-23再改修：①種に取り込み順のID（seed-0001形式）を付与し、後で人力検索できるようにした。
-  // ②ランダム表示は「モーダルを開くたび」ではなく、開いている間3秒ごとに自動で次の種へ切り替わる
-  // タイマー式に変更。切替時は「右から流れ込む→3秒静止→左へ流れて消える」のスライドアニメーション付き。
-  let ideaNotes = [];
-  let ideaSeeds = [];
-  let ideaActiveTab = 'notes';
-  let ideaExpandedNoteId = null;
+  // ================= ネタ帳（Idea Book）Phase 2 データ層 2026-08-28再設計 =================
+  // 旧実装（グローバル変数ideaSeeds/ideaNotesを単一のモーダルで表示する方式）は全面破棄。
+  // 新方式：ネタ帳は projects 配列内 kind:'ideabook' のオブジェクトとして複数持てる。
+  // 各ネタ帳は p.ideaSeeds（配列）を個別に持つ。メモ帳は別データ（localStorage単一キー、Step2で実装）。
+  // 電光掲示板の自動切替・手動送りロジックは旧実装（2026-08-23〜26）から流用し、
+  // 参照する「種の配列（pool）」を引数化することで、編集画面（その本のみ）・一覧画面（全本横断）
+  // の両方から使い回せるようにしている。
+
   let ideaSeedRotateTimer = null;
   let ideaSeedSearchQuery = '';
 
-  // フェーズ1用ダミーの「種」データ（本来はUpNoteから取り込んだモチーフ集が入る想定）。取り込み順にIDを持つ。
-  const IDEA_DUMMY_SEEDS = [
-    { id: 'seed-0001', text: 'ここに取り込んだ種が並びます' },
-    { id: 'seed-0002', text: '例：記憶を失った刺客が、依頼主こそが自分の育ての親だったと知る' },
-    { id: 'seed-0003', text: '例：手紙は届いた時にはもう、書いた本人がこの世にいない' },
-  ];
-
-  function loadIdeaNotes(){
-    try {
-      const saved = localStorage.getItem(IDEA_NOTES_STORAGE_KEY);
-      ideaNotes = saved ? JSON.parse(saved) : [];
-    } catch(_e){ ideaNotes = []; }
-  }
-  function saveIdeaNotes(){
-    try { localStorage.setItem(IDEA_NOTES_STORAGE_KEY, JSON.stringify(ideaNotes)); } catch(_e){ /* ignore */ }
-  }
-  function loadIdeaSeeds(){
-    try {
-      const saved = localStorage.getItem(IDEA_SEEDS_STORAGE_KEY);
-      ideaSeeds = saved ? JSON.parse(saved) : [];
-    } catch(_e){ ideaSeeds = []; }
-  }
-  function saveIdeaSeeds(){
-    try { localStorage.setItem(IDEA_SEEDS_STORAGE_KEY, JSON.stringify(ideaSeeds)); } catch(_e){ /* ignore */ }
-  }
-
-  // 2026-08-26新設：ヒラメキの種パーサー（ネタ帳Phase 2）
+  // 2026-08-26新設（旧実装から流用、変更なし）：ヒラメキの種パーサー（ネタ帳Phase 2）
   // UpNoteで §1件目§ §2件目§ のように§で囲んで書いたテキストを貼り付け、1件ずつ取り込む。
   // ランダム表示欄は2行までしか表示されない（実測で日本語約40文字/2行）ため、50文字を超える件は
   // 警告するが取り込み自体は許可する（一覧タブでは全文読めるため）。
@@ -6141,16 +6144,192 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return { items, warnings };
   }
 
-  // 取り込み済みseed-IDの最大連番を見て、続き番号を発行する
-  function nextIdeaSeedId(){
+  // 2026-08-28変更：グローバル配列ではなく、渡された特定ネタ帳(book)のideaSeedsを見て
+  // 続き番号を発行する（本ごとに採番が独立する）。
+  function nextIdeaSeedId(book){
     let maxNum = 0;
-    ideaSeeds.forEach(s => {
+    (book.ideaSeeds||[]).forEach(s => {
       const m = (s.id||'').match(/^seed-(\d+)$/);
       if(m) maxNum = Math.max(maxNum, parseInt(m[1],10));
     });
     return maxNum;
   }
 
+  // 2026-08-28変更：全ネタ帳(kind==='ideabook')のideaSeedsを横断して1配列にまとめる。
+  // 一覧画面ヘッダの電光掲示板（全本横断ランダム表示）で使用。
+  function allIdeaSeedsAcrossBooks(){
+    return projects
+      .filter(p => projectKind(p) === 'ideabook')
+      .flatMap(p => p.ideaSeeds || []);
+  }
+
+  // 2026-08-28新設：電光掲示板が種を持たない場合のプレースホルダ
+  const IDEA_SEED_EMPTY_PLACEHOLDER = { id: '', text: '（まだ種が登録されていません）' };
+
+  function ideaSeedPoolFrom(list){
+    return (list && list.length > 0) ? list : [IDEA_SEED_EMPTY_PLACEHOLDER];
+  }
+
+  // 2026-08-23新設・2026-08-28改修（旧実装からロジック流用、poolを引数化）：
+  // 電光掲示板は「開いている間、一定間隔で自動的に次の種へ切り替わる」＋「タップで即座に手動送り」。
+  // targetTextElId / targetIdElId で描画先のDOM要素IDを指定できるようにし、
+  // 一覧画面ヘッダ（全本横断）・編集画面ヘッダ（その本のみ）の両方から同じ関数を使い回せるようにした。
+  function startIdeaSeedRotation(getPool, textElId, idElId){
+    stopIdeaSeedRotation();
+    showNextIdeaSeed(true, getPool, textElId, idElId);
+    ideaSeedRotateTimer = setInterval(() => showNextIdeaSeed(false, getPool, textElId, idElId), ideaSeedRotateMs);
+  }
+  function stopIdeaSeedRotation(){
+    if(ideaSeedRotateTimer){ clearInterval(ideaSeedRotateTimer); ideaSeedRotateTimer = null; }
+  }
+  function showNextIdeaSeed(isFirst, getPool, textElId, idElId){
+    const pool = ideaSeedPoolFrom(getPool());
+    const textEl = document.getElementById(textElId);
+    const idEl = document.getElementById(idElId);
+    if(!textEl) return;
+    const seed = pool[Math.floor(Math.random() * pool.length)];
+    const applyNext = () => {
+      textEl.textContent = seed.text;
+      if(idEl) idEl.textContent = seed.id ? `#${seed.id}` : '';
+      textEl.classList.remove('idea-seed-exit');
+      textEl.classList.add('idea-seed-enter');
+    };
+    if(isFirst){
+      applyNext();
+    } else {
+      textEl.classList.remove('idea-seed-enter');
+      textEl.classList.add('idea-seed-exit');
+      setTimeout(applyNext, 600); // exitアニメーション(0.6s)完了を待ってから差し替え
+    }
+  }
+
+  // ================= ネタ帳（Idea Book）Phase 2 画面実装 2026-08-28 =================
+
+  // ---- メモ帳（書きなぐり欄。projects配列とは無関係、localStorage単一キーの1本テキスト） ----
+  const MEMO_PAD_STORAGE_KEY = 'manuscript_memo_pad_v1';
+  const MEMO_PAD_ROWS_KEY = 'manuscript_memo_pad_rows_v1';
+  const DEFAULT_MEMO_PAD_ROWS = 3;
+  let memoPadSaveTimer = null;
+
+  function loadMemoPadRows(){
+    const saved = parseInt(localStorage.getItem(MEMO_PAD_ROWS_KEY), 10);
+    return (saved && saved > 0) ? saved : DEFAULT_MEMO_PAD_ROWS;
+  }
+  function saveMemoPadRows(rows){
+    try { localStorage.setItem(MEMO_PAD_ROWS_KEY, String(rows)); } catch(_e){ /* ignore */ }
+  }
+  function loadMemoPadText(){
+    try { return localStorage.getItem(MEMO_PAD_STORAGE_KEY) || ''; } catch(_e){ return ''; }
+  }
+  function saveMemoPadText(text){
+    try { localStorage.setItem(MEMO_PAD_STORAGE_KEY, text); } catch(_e){ /* ignore */ }
+  }
+
+  // ---- ネタ帳一覧カード表示用の日付フォーマット（簡易、MM/DD更新） ----
+  function ideabookShortDate(ts){
+    if(!ts) return '—';
+    const d = new Date(ts);
+    return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}更新`;
+  }
+
+  function getIdeabooks(){
+    return projects.filter(p => projectKind(p) === 'ideabook');
+  }
+
+  function renderIdeabookListCards(){
+    const wrap = document.getElementById('ideabookListWrap');
+    const books = getIdeabooks();
+    if(books.length === 0){
+      wrap.innerHTML = '<div class="ideabook-list-empty">まだネタ帳がありません。ハンバーガーメニューから作成できます。</div>';
+      return;
+    }
+    wrap.innerHTML = books.map(b => {
+      const coverHTML = b.cover
+        ? `<img src="${b.cover}" alt="">`
+        : `<span class="no-cover-glyph">✒</span>`;
+      const count = (b.ideaSeeds||[]).length;
+      const intro = b.introText ? escapeHTML(b.introText) : '';
+      return `
+      <div class="ideabook-list-card" data-id="${b.id}">
+        <div class="iblc-row">
+          <div class="iblc-cover">${coverHTML}</div>
+          <div class="iblc-body">
+            <div class="iblc-title">${escapeHTML(b.title || '無題のネタ帳')}</div>
+            <div class="iblc-meta"><span class="num">${count}件</span><span>${ideabookShortDate(b.updatedAt)}</span></div>
+          </div>
+        </div>
+        ${intro ? `<div class="iblc-intro">${intro}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.ideabook-list-card').forEach(card => {
+      card.onclick = () => openIdeabookEditor(card.dataset.id);
+    });
+  }
+
+  function openIdeaBookList(){
+    document.getElementById('memoPadTextarea').value = loadMemoPadText();
+    document.getElementById('memoPadTextarea').rows = loadMemoPadRows();
+    document.getElementById('memoPadRowsInput').value = loadMemoPadRows();
+    renderIdeabookListCards();
+    document.getElementById('ideaBookListModalOverlay').classList.add('active');
+    startIdeaSeedRotation(allIdeaSeedsAcrossBooks, 'ideaBookListRandomText', 'ideaBookListRandomId');
+  }
+  function closeIdeaBookList(){
+    document.getElementById('ideaBookListModalOverlay').classList.remove('active');
+    document.getElementById('ideaBookListDropdown').classList.remove('active');
+    stopIdeaSeedRotation();
+  }
+
+  // ---- 編集画面（1冊の中身） ----
+  let currentIdeabookEditorId = null;
+
+  function currentIdeabook(){
+    return projects.find(p => p.id === currentIdeabookEditorId);
+  }
+
+  function renderIdeabookSeedsList(){
+    const book = currentIdeabook();
+    const wrap = document.getElementById('ideaSeedsList');
+    if(!book) return;
+    const seeds = book.ideaSeeds || [];
+    if(seeds.length === 0){
+      wrap.innerHTML = '<div class="chapter-tabs-empty">まだ種が登録されていません</div>';
+      return;
+    }
+    const q = ideaSeedSearchQuery.trim().toLowerCase();
+    const filtered = q
+      ? seeds.filter(s => s.text.toLowerCase().includes(q) || (s.id||'').toLowerCase().includes(q))
+      : seeds;
+    wrap.innerHTML = filtered.map(s => `
+      <div class="parse-item">
+        <div class="parse-item-head">
+          <span class="parse-item-tag" style="background:#9b8ac4;">${escapeHTML(s.id||'')}</span>
+        </div>
+        <div class="parse-item-body">${escapeHTML(s.text)}</div>
+      </div>`).join('');
+  }
+
+  function openIdeabookEditor(bookId){
+    currentIdeabookEditorId = bookId;
+    const book = currentIdeabook();
+    if(!book) return;
+    document.getElementById('ideabookEditorTitle').textContent = book.title || '無題のネタ帳';
+    ideaSeedSearchQuery = '';
+    document.getElementById('ideaSeedSearchInput').value = '';
+    renderIdeabookSeedsList();
+    document.getElementById('ideabookEditorModalOverlay').classList.add('active');
+    startIdeaSeedRotation(() => book.ideaSeeds || [], 'ideabookEditorRandomText', 'ideabookEditorRandomId');
+  }
+  function closeIdeabookEditor(){
+    document.getElementById('ideabookEditorModalOverlay').classList.remove('active');
+    document.getElementById('ideabookEditorDropdown').classList.remove('active');
+    stopIdeaSeedRotation();
+    // 一覧側の件数・更新日時表示に反映されるよう、戻った際に再描画する
+    renderIdeabookListCards();
+  }
+
+  // ---- 種の取り込み（既存のseedImportモーダルを、対象=currentIdeabookEditorIdのideaSeedsに向けて再利用） ----
   let seedImportParsedItems = [];
 
   function renderSeedImportPreview(items, warnings){
@@ -6192,199 +6371,75 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('seedImportModalOverlay').classList.remove('active');
   }
 
-  function ideaSeedPool(){
-    return ideaSeeds.length > 0 ? ideaSeeds : IDEA_DUMMY_SEEDS;
-  }
-
-  function openIdeaBook(){
-    renderIdeaNotesList();
-    renderIdeaSeedsList();
-    document.getElementById('ideaBookModalOverlay').classList.add('active');
-    startIdeaSeedRotation();
-  }
-  function closeIdeaBook(){
-    document.getElementById('ideaBookModalOverlay').classList.remove('active');
-    stopIdeaSeedRotation();
-  }
-
-  // 2026-08-23新設：使い方ガイド
-  function openHelpGuide(){
-    document.getElementById('helpGuideModalOverlay').classList.add('active');
-  }
-  function closeHelpGuide(){
-    document.getElementById('helpGuideModalOverlay').classList.remove('active');
-  }
-  function initHelpGuideEvents(){
-    document.getElementById('helpGuideModalClose').onclick = closeHelpGuide;
-    document.getElementById('helpGuideModalOverlay').addEventListener('click', (e) => {
-      if(e.target.id === 'helpGuideModalOverlay') closeHelpGuide();
+  // ---- イベントバインド一式 ----
+  function initIdeabookModalEvents(){
+    // 一覧モーダル
+    document.getElementById('ideaBookListModalClose').onclick = closeIdeaBookList;
+    document.getElementById('ideaBookListModalOverlay').addEventListener('click', (e) => {
+      if(e.target.id === 'ideaBookListModalOverlay') closeIdeaBookList();
     });
-    document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(btn => {
-      btn.onclick = () => {
-        const tab = btn.dataset.helptab;
-        document.querySelectorAll('#helpGuideModalOverlay .idea-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-        document.getElementById('helpTabManual').classList.toggle('active', tab === 'manual');
-        document.getElementById('helpTabAi').classList.toggle('active', tab === 'ai');
-      };
-    });
-  }
-
-  // ideaSeedRotateMsごとに次の種へ切り替えるタイマーを開始する（間隔は「操作感の調整」で変更可能）。
-  // 切替の瞬間：現在の表示テキストへexitアニメーション(左へ流れて消える)を付け、
-  // アニメーション完了後に中身を差し替えてenterアニメーション(右から流れ込む)を付ける。
-  function startIdeaSeedRotation(){
-    stopIdeaSeedRotation();
-    showNextIdeaSeed(true); // 初回は即表示（enterアニメのみ）
-    ideaSeedRotateTimer = setInterval(() => showNextIdeaSeed(false), ideaSeedRotateMs);
-  }
-  function stopIdeaSeedRotation(){
-    if(ideaSeedRotateTimer){ clearInterval(ideaSeedRotateTimer); ideaSeedRotateTimer = null; }
-  }
-  function showNextIdeaSeed(isFirst){
-    const pool = ideaSeedPool();
-    const textEl = document.getElementById('ideaSeedRandomText');
-    const idEl = document.getElementById('ideaSeedRandomId');
-    const seed = pool[Math.floor(Math.random() * pool.length)];
-    const applyNext = () => {
-      textEl.textContent = seed.text;
-      idEl.textContent = seed.id ? `#${seed.id}` : '';
-      textEl.classList.remove('idea-seed-exit');
-      textEl.classList.add('idea-seed-enter');
-    };
-    if(isFirst){
-      applyNext();
-    } else {
-      textEl.classList.remove('idea-seed-enter');
-      textEl.classList.add('idea-seed-exit');
-      setTimeout(applyNext, 600); // exitアニメーション(0.6s)完了を待ってから差し替え
-    }
-  }
-
-  function getSortedIdeaNotes(){
-    return [...ideaNotes].sort((a,b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
-  }
-
-  function renderIdeaNotesList(){
-    const wrap = document.getElementById('ideaNotesList');
-    const sorted = getSortedIdeaNotes();
-    if(sorted.length === 0){
-      wrap.innerHTML = '<div class="idea-empty-hint">まだネタがありません。上のフォームから書き留めてみましょう。</div>';
-      return;
-    }
-    wrap.innerHTML = sorted.map(n => {
-      const expanded = ideaExpandedNoteId === n.id;
-      return `
-      <div class="idea-note-item ${n.pinned?'pinned':''}" data-id="${n.id}">
-        <div class="idea-note-item-head" data-role="idea-note-head">
-          <div class="idea-note-item-title">${escapeHTML(n.title || '無題のネタ')}</div>
-          ${n.pinned ? '<div class="idea-note-item-pin-badge">PIN</div>' : ''}
-        </div>
-        <div class="idea-note-item-body ${expanded?'expanded':''}">
-          <input type="text" class="idea-note-edit-title" value="${escapeHTML(n.title||'')}" placeholder="一言タイトル" style="width:100%; margin-bottom:8px; background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:8px 10px; color:var(--text); font-family:var(--font-body); font-size:0.85rem;">
-          <textarea class="idea-note-edit-body auto-resize-textarea">${escapeHTML(n.body||'')}</textarea>
-          <div class="idea-note-item-actions">
-            <button type="button" class="btn" data-role="idea-note-pin">${n.pinned?'📌 ピン解除':'📌 ピン留め'}</button>
-            <button type="button" class="btn" data-role="idea-note-save">保存</button>
-            <button type="button" class="btn" data-role="idea-note-delete" style="color:var(--danger); border-color:var(--danger);">削除</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-
-    wrap.querySelectorAll('.idea-note-item').forEach(itemEl => {
-      const id = itemEl.dataset.id;
-      itemEl.querySelector('[data-role="idea-note-head"]').onclick = () => {
-        ideaExpandedNoteId = (ideaExpandedNoteId === id) ? null : id;
-        renderIdeaNotesList();
-      };
-      const bodyEl = itemEl.querySelector('.idea-note-item-body');
-      if(bodyEl && bodyEl.classList.contains('expanded')){
-        const ta = bodyEl.querySelector('.idea-note-edit-body');
-        enableAutoResize(ta);
-      }
-      const pinBtn = itemEl.querySelector('[data-role="idea-note-pin"]');
-      if(pinBtn) pinBtn.onclick = (e) => {
-        e.stopPropagation();
-        const note = ideaNotes.find(n => n.id === id);
-        if(note){ note.pinned = !note.pinned; saveIdeaNotes(); renderIdeaNotesList(); }
-      };
-      const saveBtn = itemEl.querySelector('[data-role="idea-note-save"]');
-      if(saveBtn) saveBtn.onclick = (e) => {
-        e.stopPropagation();
-        const note = ideaNotes.find(n => n.id === id);
-        if(note){
-          note.title = itemEl.querySelector('.idea-note-edit-title').value.trim();
-          note.body = itemEl.querySelector('.idea-note-edit-body').value;
-          note.updatedAt = Date.now();
-          saveIdeaNotes();
-          renderIdeaNotesList();
-        }
-      };
-      const delBtn = itemEl.querySelector('[data-role="idea-note-delete"]');
-      if(delBtn) delBtn.onclick = (e) => {
-        e.stopPropagation();
-        ideaNotes = ideaNotes.filter(n => n.id !== id);
-        saveIdeaNotes();
-        renderIdeaNotesList();
-      };
-    });
-  }
-
-  function renderIdeaSeedsList(){
-    const wrap = document.getElementById('ideaSeedsList');
-    if(ideaSeeds.length === 0){
-      wrap.innerHTML = '<div class="idea-empty-hint">まだ「種」が取り込まれていません。<br>上の「＋ 種を取り込む」から追加できます。</div>';
-      return;
-    }
-    const q = ideaSeedSearchQuery.trim().toLowerCase();
-    const filtered = q
-      ? ideaSeeds.filter(s => s.text.toLowerCase().includes(q) || (s.id||'').toLowerCase().includes(q))
-      : ideaSeeds;
-    if(filtered.length === 0){
-      wrap.innerHTML = '<div class="idea-empty-hint">一致する種が見つかりませんでした。</div>';
-      return;
-    }
-    wrap.innerHTML = filtered.map(s => `
-      <div class="idea-note-item">
-        <div class="idea-note-item-head" style="cursor:default; align-items:flex-start;">
-          <div class="idea-seed-item-title">${escapeHTML(s.text)}</div>
-          <div class="idea-seed-item-id">#${escapeHTML(s.id||'')}</div>
-        </div>
-      </div>`).join('');
-  }
-
-  // 2026-08-27新設：ネタ帳「AIで記法を整える」のテンプレート選択欄(select)を、
-  // promptTemplates['ideaSeedFormat']の現在の内容で再構築する。
-  // initIdeaBookEvents（ネタ帳イベント初期化）とテンプレート管理側のsaveTemplates()の両方から呼ばれる。
-  function refreshIdeaSeedTemplateSelect(){
-    const sel = document.getElementById('ideaSeedTemplateSelect');
-    if(!sel) return; // ネタ帳モーダルがまだ初期化されていない場合は何もしない
-    const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
-    const savedId = localStorage.getItem('ideaSeedFormatSelectedTemplateId');
-    const validId = list.some(t => t.id === savedId) ? savedId : (list[0] && list[0].id);
-    sel.innerHTML = list.map(t => `<option value="${t.id}">${escapeHTML(t.name || '無題テンプレート')}</option>`).join('');
-    if(validId) sel.value = validId;
-  }
-
-  // 2026-08-23新設：ネタ帳モーダルまわりのイベントバインド（DOMContentLoaded後、初期化処理内で1回だけ呼ぶ想定）
-  function initIdeaBookEvents(){
-    document.getElementById('ideaBookModalClose').onclick = closeIdeaBook;
-    document.getElementById('ideaBookModalOverlay').addEventListener('click', (e) => {
-      if(e.target.id === 'ideaBookModalOverlay') closeIdeaBook();
-    });
-
-    // 2026-08-27新設：「取り込んだ種一覧」タブのボタン群をハンバーガーメニューに集約。
-    // 開閉は他のハンバーガーメニュー（dashDropdown等）と同じ .dropdown-menu / .active パターンを踏襲。
-    document.getElementById('ideaSeedHamburgerBtn').onclick = (e) => {
+    document.getElementById('ideaBookListHamburgerBtn').onclick = (e) => {
       e.stopPropagation();
-      document.getElementById('ideaSeedDropdown').classList.toggle('active');
+      document.getElementById('ideaBookListDropdown').classList.toggle('active');
+    };
+    document.getElementById('ideaBookCreateBtn').onclick = () => {
+      document.getElementById('ideaBookListDropdown').classList.remove('active');
+      const title = prompt('ネタ帳のタイトルを入力してください', '');
+      if(title === null) return; // キャンセル
+      const book = newIdeabookSkeleton();
+      book.title = title.trim() || '無題のネタ帳';
+      projects.push(book);
+      save();
+      renderIdeabookListCards();
+    };
+    document.getElementById('memoPadRowsInput').onchange = (e) => {
+      let rows = parseInt(e.target.value, 10);
+      if(!rows || rows < 1) rows = 1;
+      saveMemoPadRows(rows);
+      document.getElementById('memoPadTextarea').rows = rows;
+    };
+    const memoTa = document.getElementById('memoPadTextarea');
+    memoTa.oninput = () => {
+      if(memoPadSaveTimer) clearTimeout(memoPadSaveTimer);
+      memoPadSaveTimer = setTimeout(() => saveMemoPadText(memoTa.value), 600);
+    };
+    // タップで電光掲示板を手動送り
+    document.getElementById('ideaBookListRandomBox').onclick = () => {
+      showNextIdeaSeed(false, allIdeaSeedsAcrossBooks, 'ideaBookListRandomText', 'ideaBookListRandomId');
+      if(ideaSeedRotateTimer){
+        clearInterval(ideaSeedRotateTimer);
+        ideaSeedRotateTimer = setInterval(() => showNextIdeaSeed(false, allIdeaSeedsAcrossBooks, 'ideaBookListRandomText', 'ideaBookListRandomId'), ideaSeedRotateMs);
+      }
     };
 
-    // 2026-08-26新設：ヒラメキの種 取り込みモーダル
-    document.getElementById('openSeedImportBtn').onclick = () => {
-      document.getElementById('ideaSeedDropdown').classList.remove('active');
+    // 編集画面モーダル
+    document.getElementById('ideabookEditorModalClose').onclick = closeIdeabookEditor;
+    document.getElementById('ideabookEditorModalOverlay').addEventListener('click', (e) => {
+      if(e.target.id === 'ideabookEditorModalOverlay') closeIdeabookEditor();
+    });
+    document.getElementById('ideabookEditorHamburgerBtn').onclick = (e) => {
+      e.stopPropagation();
+      document.getElementById('ideabookEditorDropdown').classList.toggle('active');
+    };
+    document.getElementById('ideabookOpenSeedImportBtn').onclick = () => {
+      document.getElementById('ideabookEditorDropdown').classList.remove('active');
       openSeedImportModal();
     };
+    document.getElementById('ideaSeedSearchInput').addEventListener('input', (e) => {
+      ideaSeedSearchQuery = e.target.value;
+      renderIdeabookSeedsList();
+    });
+    document.getElementById('ideabookEditorRandomBox').onclick = () => {
+      const book = currentIdeabook();
+      if(!book) return;
+      showNextIdeaSeed(false, () => book.ideaSeeds || [], 'ideabookEditorRandomText', 'ideabookEditorRandomId');
+      if(ideaSeedRotateTimer){
+        clearInterval(ideaSeedRotateTimer);
+        ideaSeedRotateTimer = setInterval(() => showNextIdeaSeed(false, () => book.ideaSeeds || [], 'ideabookEditorRandomText', 'ideabookEditorRandomId'), ideaSeedRotateMs);
+      }
+    };
+
+    // 種の取り込みモーダル（対象は currentIdeabookEditorId の本）
     document.getElementById('seedImportModalClose').onclick = closeSeedImportModal;
     document.getElementById('seedImportCancelBtn').onclick = closeSeedImportModal;
     document.getElementById('seedImportModalOverlay').addEventListener('click', (e) => {
@@ -6397,90 +6452,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
       renderSeedImportPreview(items, warnings);
     };
     document.getElementById('seedImportApplyBtn').onclick = () => {
-      if(seedImportParsedItems.length === 0) return;
-      let nextNum = nextIdeaSeedId();
+      const book = currentIdeabook();
+      if(!book || seedImportParsedItems.length === 0) return;
+      let nextNum = nextIdeaSeedId(book);
+      if(!book.ideaSeeds) book.ideaSeeds = [];
       seedImportParsedItems.forEach(text => {
         nextNum += 1;
-        ideaSeeds.push({ id: 'seed-' + String(nextNum).padStart(4,'0'), text });
+        book.ideaSeeds.push({ id: 'seed-' + String(nextNum).padStart(4,'0'), text });
       });
-      saveIdeaSeeds();
-      renderIdeaSeedsList();
+      book.updatedAt = Date.now();
+      save();
+      renderIdeabookSeedsList();
       closeSeedImportModal();
     };
-
-    // 2026-08-26新設：ヒラメキの種 全件エクスポート／インポート（JSON）
-    document.getElementById('ideaSeedExportBtn').onclick = () => {
-      document.getElementById('ideaSeedDropdown').classList.remove('active');
-      exportIdeaSeeds();
-    };
-    document.getElementById('ideaSeedImportFileBtn').onclick = () => {
-      document.getElementById('ideaSeedDropdown').classList.remove('active');
-      document.getElementById('ideaSeedImportFileInput').click();
-    };
-    document.getElementById('ideaSeedImportFileInput').onchange = (e) => {
-      const file = e.target.files[0];
-      if(file) importIdeaSeedsFromFile(file);
-      e.target.value = ''; // 同じファイルを連続選択しても onchange が発火するようにリセット
-    };
-
-    // 2026-08-27改修：「AIで記法を整える」で使うテンプレートを選択式に変更。
-    // 用途'ideaSeedFormat'に登録された全テンプレートを select の選択肢として並べ、
-    // 選択中のIDを ideaSeedFormatSelectedTemplateId として保持（作品をまたいだアプリ全体設定として localStorage に保存）。
-    // 関数本体はトップレベルの refreshIdeaSeedTemplateSelect() を参照（テンプレート管理画面の
-    // saveTemplates() からも呼び出せるようにするため、initIdeaBookEvents内には置かない）。
-    document.getElementById('ideaSeedTemplateSelect').onchange = (e) => {
-      localStorage.setItem('ideaSeedFormatSelectedTemplateId', e.target.value);
-    };
-    document.getElementById('ideaSeedTemplateSelect').addEventListener('click', (e) => {
-      e.stopPropagation(); // メニュー内クリックでドロップダウンが閉じないように
-    });
-    refreshIdeaSeedTemplateSelect();
-
-    document.getElementById('ideaSeedFormatPromptBtn').onclick = () => {
-      document.getElementById('ideaSeedDropdown').classList.remove('active');
-      const list = promptTemplates['ideaSeedFormat'] || defaultTemplatesFor('ideaSeedFormat');
-      const selectedId = document.getElementById('ideaSeedTemplateSelect').value;
-      const t = list.find(t => t.id === selectedId) || list[0] || { head:'', tail:'' };
-      const text = [t.head||'', t.tail||''].filter(s=>s.trim()).join('\n\n').trim();
-      copyTextWithToast(text);
-    };
-
-    // タップで手動送り（自動ローテーションのタイマーはリセットして重複切替を防ぐ）
-    document.getElementById('ideaSeedRandomBox').onclick = () => {
-      showNextIdeaSeed(false);
-      if(ideaSeedRotateTimer){ clearInterval(ideaSeedRotateTimer); ideaSeedRotateTimer = setInterval(() => showNextIdeaSeed(false), ideaSeedRotateMs); }
-    };
-    document.getElementById('ideaNoteAddBtn').onclick = () => {
-      const titleEl = document.getElementById('ideaNoteTitleInput');
-      const bodyEl = document.getElementById('ideaNoteBodyInput');
-      const title = titleEl.value.trim();
-      const body = bodyEl.value.trim();
-      if(!title && !body) return;
-      ideaNotes.push({
-        id: 'idea_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-        title, body,
-        pinned: false,
-        updatedAt: Date.now()
-      });
-      saveIdeaNotes();
-      titleEl.value = '';
-      bodyEl.value = '';
-      bodyEl.style.height = '';
-      renderIdeaNotesList();
-    };
-    enableAutoResize(document.getElementById('ideaNoteBodyInput'));
-    document.getElementById('ideaSeedSearchInput').addEventListener('input', (e) => {
-      ideaSeedSearchQuery = e.target.value;
-      renderIdeaSeedsList();
-    });
-    document.querySelectorAll('.idea-tab-btn').forEach(btn => {
-      btn.onclick = () => {
-        ideaActiveTab = btn.dataset.ideatab;
-        document.querySelectorAll('.idea-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-        document.getElementById('ideaTabNotes').classList.toggle('active', ideaActiveTab === 'notes');
-        document.getElementById('ideaTabSeeds').classList.toggle('active', ideaActiveTab === 'seeds');
-      };
-    });
   }
 
   // 2026-08-21変更：originEl（拡大の起点となるDOM要素）を渡すと、その位置・サイズから
@@ -6723,10 +6707,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(dmenu.classList.contains('active') && !dmenu.contains(e.target) && e.target.id !== 'detailHamburgerBtn'){
       dmenu.classList.remove('active');
     }
-    // 2026-08-27新設：ネタ帳「取り込んだ種一覧」タブのハンバーガーメニュー
-    const seedMenu = document.getElementById('ideaSeedDropdown');
-    if(seedMenu && seedMenu.classList.contains('active') && !seedMenu.contains(e.target) && e.target.id !== 'ideaSeedHamburgerBtn'){
-      seedMenu.classList.remove('active');
+    // 2026-08-28新設：ネタ帳一覧・編集画面のハンバーガーメニュー
+    const ibListMenu = document.getElementById('ideaBookListDropdown');
+    if(ibListMenu && ibListMenu.classList.contains('active') && !ibListMenu.contains(e.target) && e.target.id !== 'ideaBookListHamburgerBtn'){
+      ibListMenu.classList.remove('active');
+    }
+    const ibEditorMenu = document.getElementById('ideabookEditorDropdown');
+    if(ibEditorMenu && ibEditorMenu.classList.contains('active') && !ibEditorMenu.contains(e.target) && e.target.id !== 'ideabookEditorHamburgerBtn'){
+      ibEditorMenu.classList.remove('active');
     }
   });
   document.getElementById('menuSelectModeBtn').onclick = () => {
@@ -10665,9 +10653,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   loadIdeaSeedRotateMs();
   loadHeaderRotateMs();
   loadBookmarkColor();
-  loadIdeaNotes();
-  loadIdeaSeeds();
-  initIdeaBookEvents();
+  initIdeabookModalEvents();
   initReelInteraction();
   initCoverPositionDrag();
   initHelpGuideEvents();
