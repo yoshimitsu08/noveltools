@@ -695,19 +695,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 /* 2026-08-27新設：起動時GitHub SHA照合バッジ。カバー画像中央に大きく表示（カバーが隠れてもよい仕様）。
-   カバー画像より手前に出す必要があるため z-index を明示。 */
-.reel-card .rc-gh-diff-badge {
-  display:none;
+   カバー画像より手前に出す必要があるため z-index を明示。
+   2026-08-28追記：「未保存（ローカル未同期）」バッジと中央スペースを共有するため、
+   2つのバッジをラップする.rc-gh-badge-stackを新設し、縦積みレイアウトに変更した。
+   片方のみ表示の場合はそのバッジ単体が中央に来る（stack自体がflexで中央寄せしているため）。 */
+.reel-card .rc-gh-badge-stack {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   z-index:5;
-  background:#c0392b; color:#fff;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+.reel-card .rc-gh-diff-badge,
+.reel-card .rc-gh-unsaved-badge {
+  display:none;
+  color:#fff;
   font-family:var(--font-ui); font-weight:bold;
-  font-size:0.85rem; letter-spacing:0.1em;
-  padding:6px 10px; border-radius:4px;
+  font-size:0.8rem; letter-spacing:0.08em;
+  padding:5px 9px; border-radius:4px;
   box-shadow:0 2px 8px rgba(0,0,0,0.5);
   white-space:nowrap;
 }
+.reel-card .rc-gh-diff-badge { background:#c0392b; } /* 赤：GitHub側が先行（他端末更新の可能性） */
+.reel-card .rc-gh-unsaved-badge { background:#2966c9; } /* 青：この端末の変更が未保存 */
 .reel-card.rc-gh-has-diff .rc-gh-diff-badge { display:block; }
+.reel-card.rc-gh-has-unsaved .rc-gh-unsaved-badge { display:block; }
 .reel-card .rc-body {
   flex:1; min-width:0;
   padding:10px 14px;
@@ -5020,13 +5030,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(selectMode && isChecked) cardClasses.push('rc-checked');
     // 2026-08-27新設：起動時GitHub SHA照合で「差分あり」と判定された作品に赤バッジを出す
     if(ghDiffProjectIds.has(p.id)) cardClasses.push('rc-gh-has-diff');
+    // 2026-08-28新設：この端末での編集がGitHubへ未保存の場合に青バッジを出す。
+    // GitHub連携が未設定の場合はp._githubSyncが常に無いため意味を持たず表示すべきでない。
+    if(ghIsConfigured() && ghHasUnsyncedLocalChanges(p)) cardClasses.push('rc-gh-has-unsaved');
 
     return `
     <div class="${cardClasses.join(' ')}" data-id="${p.id}">
       <div class="rc-cover" data-role="cover" data-phase-label="${escapeHTML(phaseLabel(p))}">
         ${p.pinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="rc-editor-badge">${escapeHTML(p.editor)}</div>` : ''}
-        <div class="rc-gh-diff-badge">⚠ 更新あり</div>
+        <div class="rc-gh-badge-stack">
+          <div class="rc-gh-diff-badge">⚠ 更新あり</div>
+          <div class="rc-gh-unsaved-badge">⚠ 未保存</div>
+        </div>
         ${coverHTML}
       </div>
       <div class="rc-body">
