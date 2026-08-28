@@ -1372,6 +1372,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
 .detail-section {
   margin-bottom:20px;
 }
+.gh-conflict-field-diff {
+  margin-bottom:8px;
+  padding:8px 10px;
+  border:1px solid var(--border,#ccc);
+  border-radius:6px;
+}
+.gh-conflict-field-diff summary {
+  list-style:revert;
+}
 .detail-section-title {
   font-family:var(--font-ui);
   font-size:0.65rem;
@@ -2846,6 +2855,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <div class="detail-section">
         <div class="detail-section-title">GitHub上の内容</div>
         <div id="githubConflictRemoteStats" style="font-size:0.85rem; line-height:1.8; color:var(--text2);"></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">差分の詳細（タイトル・メモ・プロンプト等）</div>
+        <div id="githubConflictFieldDiff" style="font-size:0.85rem;"></div>
       </div>
       <div class="detail-section" style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn primary" id="githubConflictOverwriteBtn" style="flex:1;">この端末の内容で上書き</button>
@@ -7296,15 +7309,55 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return `更新日時：${escapeHTML(dateStr)}<br>文字数：${stats.totalChars.toLocaleString()} 字<br>章数：${stats.chapterCount} 章`;
   }
 
+  // GitHub競合比較モーダル：単純な文字列フィールドの差分表示（2026-08-28新設）
+  // 対象は project 直下の単純な文字列フィールドのみ。章本文・カード配列（人物・プロット等）・
+  // ネストされたフィールド（imagePrompts.main.prompt等）は今回のスコープ外（次回以降の拡張課題）。
+  const GH_CONFLICT_TEXT_FIELDS = [
+    { key: 'title', label: 'タイトル' },
+    { key: 'author', label: '作者名' },
+    { key: 'editor', label: '編集担当' },
+    { key: 'proofreader', label: '校正担当' },
+    { key: 'revisor', label: '推敲担当' },
+    { key: 'imageCredit', label: '画像クレジット' },
+    { key: 'introText', label: '紹介文' },
+    { key: 'memo', label: 'メモ' },
+    { key: 'roughMemo', label: 'ラフメモ' },
+    { key: 'writingPrompt', label: '執筆用プロンプト' }
+  ];
+
+  // <details>は標準HTML要素のため、開閉のためのJSは不要（open属性の有無だけで初期状態を制御する）。
+  function buildGithubConflictFieldDiffHtml(localProject, remoteProject){
+    return GH_CONFLICT_TEXT_FIELDS.map(field => {
+      const localVal = localProject[field.key] || '';
+      const remoteVal = remoteProject[field.key] || '';
+      const isDiff = localVal !== remoteVal;
+      const localDisplay = localVal ? escapeHTML(localVal) : '<span class="manuscript-preview-empty">（空欄）</span>';
+      const remoteDisplay = remoteVal ? escapeHTML(remoteVal) : '<span class="manuscript-preview-empty">（空欄）</span>';
+      return `
+        <details${isDiff ? ' open' : ''} class="gh-conflict-field-diff">
+          <summary style="cursor:pointer; font-weight:bold; font-size:0.85rem;">${escapeHTML(field.label)}${isDiff ? '（差分あり）' : '（差分なし）'}</summary>
+          <div style="margin-top:8px; padding-left:8px; border-left:3px solid var(--border,#ccc); font-size:0.82rem;">
+            <div style="font-size:0.75rem; color:var(--text2); margin-bottom:2px;">この端末</div>
+            <div style="white-space:pre-wrap; margin-bottom:10px;">${localDisplay}</div>
+            <div style="font-size:0.75rem; color:var(--text2); margin-bottom:2px;">GitHub上</div>
+            <div style="white-space:pre-wrap;">${remoteDisplay}</div>
+          </div>
+        </details>
+      `;
+    }).join('');
+  }
+
   async function openGithubConflictModal(cfg, p){
     const overlay = document.getElementById('githubConflictModalOverlay');
     const localBox = document.getElementById('githubConflictLocalStats');
     const remoteBox = document.getElementById('githubConflictRemoteStats');
+    const fieldDiffBox = document.getElementById('githubConflictFieldDiff');
     const overwriteBtn = document.getElementById('githubConflictOverwriteBtn');
     const fetchBtn = document.getElementById('githubConflictFetchBtn');
 
     localBox.textContent = '';
     remoteBox.textContent = '確認中…';
+    fieldDiffBox.textContent = '';
     overwriteBtn.disabled = true;
     fetchBtn.disabled = true;
     overlay.classList.add('active');
@@ -7327,6 +7380,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const remoteStats = computeProjectStats(remote.payload.project);
     localBox.innerHTML = formatStatsHtml(localStats);
     remoteBox.innerHTML = formatStatsHtml(remoteStats);
+    fieldDiffBox.innerHTML = buildGithubConflictFieldDiffHtml(p, remote.payload.project);
     overwriteBtn.disabled = false;
     fetchBtn.disabled = false;
 
