@@ -4054,6 +4054,30 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return p._githubSync.lastSyncedUpdatedAt !== p.updatedAt;
   }
 
+  // Push（保存）完了後の共通処理（2026-08-28新設）。
+  // 通常のPushボタン・比較モーダルからの上書き、両方から呼ぶことで挙動を統一する。
+  // 「result.ok」を明示チェックすることで、409でも例外でもない未知の失敗パターンを
+  // 誤って成功扱いしてしまうことを防ぐ（従来はconflict/needsConfirmation以外は
+  // 無条件に成功とみなしていた）。
+  // 完了後は、ヨッシーさんの要望に合わせてトースト＋自動遷移ではなく、
+  // 「保存完了しました」のアラートを出し、ユーザーがOKを押した後にappNavBack()する。
+  function ghFinishPush(p, result){
+    if(!result || !result.ok){
+      alert('保存処理が正常に完了しませんでした。お手数ですが、もう一度お試しください。');
+      return;
+    }
+    ghMarkSynced(p, result.newSha);
+    save();
+    alert('☁️ 保存完了しました');
+    appNavBack();
+  }
+
+  // Pull（取得）完了後の共通処理（2026-08-28新設）。Pushと挙動を揃える。
+  function ghFinishPull(){
+    alert('☁️ GitHubから取得しました');
+    appNavBack();
+  }
+
   // リポジトリ直下にある全ての同期ファイル（manuscript_sync_*.json）を列挙する。
   // 新端末での「作品一覧から選んで取り込む」機能、および起動時のSHA照合機能（2026-08-27新設）で使用。
   // 戻り値: [{ filename, sha, id, title }]  ※titleはファイル名から推測した簡易表示用（正確な値は復号後にしか分からない）
@@ -7228,11 +7252,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
           return;
         }
       }
-      ghMarkSynced(p, result.newSha);
-      save();
-      ghShowToast('☁️ GitHubに保存しました');
-      // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一（詳細は上記コメント参照）。
-      appNavBack();
+      // 2026-08-28修正：ok判定・保存後の遷移を共通処理ghFinishPushに統一。
+      ghFinishPush(p, result);
     } catch(err){
       alert(`保存に失敗しました：${err.message}`);
     } finally {
@@ -7262,7 +7283,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     ghMarkSynced(projects[idx], remote.sha);
     save();
     renderGrid();
-    ghShowToast('☁️ GitHubから取得しました');
+    // 2026-08-28修正：完了メッセージ・遷移は呼び出し元でghFinishPullを呼んで統一する
+    // （このヘルパー自体は「取り込み」までを担当し、UI遷移の責務は呼び出し元に置く）。
     return true;
   }
 
@@ -7288,8 +7310,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       }
       const ok = await ghPullProjectInto(cfg, p, remote);
       if(!ok) return;
-      // 2026-08-28修正：直接classList.removeせず、history.back()経由に統一（詳細は上記コメント参照）。
-      appNavBack();
+      // 2026-08-28修正：完了メッセージ＋遷移をghFinishPullに統一。
+      ghFinishPull();
     } catch(err){
       alert(`取得に失敗しました：${err.message}`);
     } finally {
@@ -7406,11 +7428,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
             resolve(false);
             return;
           }
-          ghMarkSynced(p, result.newSha);
-          save();
-          ghShowToast('☁️ GitHubに保存しました');
           cleanup();
-          appNavBack();
+          // 2026-08-28修正：ok判定・保存後の遷移を共通処理ghFinishPushに統一。
+          ghFinishPush(p, result);
           resolve(true);
         } catch(err){
           alert(`保存に失敗しました：${err.message}`);
@@ -7425,7 +7445,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         try {
           const ok = await ghPullProjectInto(cfg, p, remote);
           cleanup();
-          if(ok) appNavBack();
+          if(ok) ghFinishPull();
           resolve(ok);
         } catch(err){
           alert(`取得に失敗しました：${err.message}`);
