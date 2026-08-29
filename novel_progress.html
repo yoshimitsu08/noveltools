@@ -2217,6 +2217,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
   border-color:var(--danger);
   color:var(--danger);
 }
+.selector-active-toggle-btn {
+  border:1px solid var(--border);
+  color:var(--text3);
+  background:none;
+}
+.selector-active-toggle-btn.is-active {
+  border-color:var(--accent);
+  color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 15%, transparent);
+}
 
 .selector-row-group {
   display:flex;
@@ -4478,6 +4488,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
     entry.selector.series.forEach(s => {
       if(!entry.selector.seriesCards[s.id]) entry.selector.seriesCards[s.id] = [];
     });
+    // 2026-08-29 新設：系列レベルの採用フラグ（active）。
+    // 「採用系統は常に1つだけ」が原則のため、まだ1系列もactiveを持たない場合は
+    // 「採用中のカードを1つでも持つ最初の系列」をactive:trueにし、他は全てfalseにする
+    // （既存データが本文として実際に表示していた内容をそのまま維持するための救済措置）。
+    const anyActiveDefined = entry.selector.series.some(s => s.active !== undefined);
+    if(!anyActiveDefined && entry.selector.series.length > 0){
+      const seriesWithSelectedCard = entry.selector.series.find(s =>
+        (entry.selector.seriesCards[s.id] || []).some(c => c.selected)
+      );
+      const fallbackSeries = seriesWithSelectedCard || entry.selector.series[0];
+      entry.selector.series.forEach(s => { s.active = (s.id === fallbackSeries.id); });
+    } else {
+      // 一部だけundefinedの場合（後から系列が追加された等）の保険：未定義はfalseに補完
+      entry.selector.series.forEach(s => { if(s.active === undefined) s.active = false; });
+    }
     return entry.selector;
   }
 
@@ -4487,15 +4512,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // 選択中カードだけを結合して合成テキストを作る。
-  // 2026-08-20〜：系列は独立管理になったため、合成対象は「章内の全系列の選択中カードをまとめて結合」する
-  // という従来の考え方ではなく、系列ごとのカード配列（seriesCards）を横断して選択中カードのみ拾う。
-  // 複数系列がある場合、系列の並び順→系列内カード順、の順で結合する（rows時代の「行の順」相当の代替）。
+  // 2026-08-29〜：本文に反映されるのは「採用系列（active:true）×採用行（selected:true）」のみ。
+  // 採用系列は常に1つだけ（排他制御）なので、実質「アクティブな1系列の中の選択中カード」を結合する。
   function composeSelectorText(selector){
+    const activeSeries = (selector.series || []).find(s => s.active);
+    if(!activeSeries) return '';
     const parts = [];
-    (selector.series || []).forEach(s => {
-      (selector.seriesCards[s.id] || []).forEach(card => {
-        if(card.selected) parts.push(card.text);
-      });
+    (selector.seriesCards[activeSeries.id] || []).forEach(card => {
+      if(card.selected) parts.push(card.text);
     });
     return parts.join('\n');
   }
@@ -4526,20 +4550,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // 合成テキストをHTML化し、しおり（lastEditedCardId）に対応する文だけ二重下線を付ける
+  // 2026-08-29〜：対象は採用系列（active:true）のみ
   function composeSelectorHtml(entry){
     const selector = ensureSelector(entry);
     const bookmarkId = entry.lastEditedCardId;
+    const activeSeries = (selector.series || []).find(s => s.active);
+    if(!activeSeries) return '';
     const parts = [];
-    (selector.series || []).forEach(s => {
-      (selector.seriesCards[s.id] || []).forEach(card => {
-        if(!card.selected) return;
-        const text = escapeHTML(card.text);
-        if(bookmarkId && card.id === bookmarkId){
-          parts.push(`<span class="bookmark-sentence" style="border-bottom-color:${bookmarkBorderColor};">${text}</span>`);
-        } else {
-          parts.push(text);
-        }
-      });
+    (selector.seriesCards[activeSeries.id] || []).forEach(card => {
+      if(!card.selected) return;
+      const text = escapeHTML(card.text);
+      if(bookmarkId && card.id === bookmarkId){
+        parts.push(`<span class="bookmark-sentence" style="border-bottom-color:${bookmarkBorderColor};">${text}</span>`);
+      } else {
+        parts.push(text);
+      }
     });
     return parts.join('\n');
   }
@@ -8855,18 +8880,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(!selector.series.some(s => s.id === selectorActiveSeriesId)){
         selectorActiveSeriesId = selector.series[0].id;
       }
+      const viewingSeries = selector.series.find(s => s.id === selectorActiveSeriesId);
+      const isViewingActive = !!(viewingSeries && viewingSeries.active);
       legendEl.innerHTML = `
         <select class="selector-series-select" id="selectorSeriesSelect">
-          ${selector.series.map(s => `<option value="${s.id}"${s.id===selectorActiveSeriesId?' selected':''}>Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`).join('')}
+          ${selector.series.map(s => `<option value="${s.id}"${s.id===selectorActiveSeriesId?' selected':''}>${s.active ? '● ' : ''}Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`).join('')}
         </select>
+        <button type="button" class="btn selector-active-toggle-btn${isViewingActive ? ' is-active' : ''}" id="selectorActiveToggleBtn" style="font-size:0.62rem; padding:6px 10px; flex-shrink:0;" title="このドラフトを本文に採用する">${isViewingActive ? '✓ 採用中' : '採用にする'}</button>
         <button type="button" class="selector-legend-delete-btn" id="selectorDeleteSeriesBtn" title="表示中のドラフトを全削除">🗑</button>
         <button type="button" class="btn" id="selectorCompareBtn" style="font-size:0.62rem; padding:6px 10px;">⇕ 章を比較</button>
       `;
       document.getElementById('selectorSeriesSelect').onchange = (e) => {
         selectorActiveSeriesId = e.target.value;
         selectorEditingCardId = null;
-        renderSelectorRows();
-        renderSelectorComposed();
+        renderSelectorAll();
+      };
+      document.getElementById('selectorActiveToggleBtn').onclick = () => {
+        toggleSeriesActive(selectorActiveSeriesId);
       };
       document.getElementById('selectorDeleteSeriesBtn').onclick = () => {
         const s = selector.series.find(x=>x.id===selectorActiveSeriesId);
@@ -8881,10 +8911,39 @@ h1 .mark { color:var(--accent); font-style:italic; }
     renderSelectorComposed();
   }
 
+  // 2026-08-29新設：系列（ドラフト）レベルの採用トグル。
+  // 採用系列は常に1つだけ（排他制御）。ONにした系列以外は自動的にOFFになる。
+  // 唯一の採用系列をOFFにしようとする操作（採用ゼロになる）だけは確認ダイアログで防止する。
+  function toggleSeriesActive(seriesId){
+    const entry = getSelectorEntry();
+    const selector = ensureSelector(entry);
+    const target = selector.series.find(s => s.id === seriesId);
+    if(!target) return;
+
+    if(target.active){
+      // 唯一の採用系列をOFFにしようとしている場合のみ警告
+      const otherActiveExists = selector.series.some(s => s.id !== seriesId && s.active);
+      if(!otherActiveExists){
+        alert('本文には必ず1つのドラフトを採用状態にしておく必要があります。\n別のドラフトを先に「採用にする」で切り替えてください。');
+        return;
+      }
+      target.active = false;
+    } else {
+      // 排他制御：これをONにし、他は全てOFFにする
+      selector.series.forEach(s => { s.active = (s.id === seriesId); });
+    }
+
+    const p = projects.find(x=>x.id===currentSelectorProjectId);
+    if(p){ p.updatedAt = Date.now(); recomputeTotalWordcount(p); save(); }
+    renderSelectorAll();
+  }
+
   function deleteSelectorDraft(seriesId, label){
     const entry = getSelectorEntry();
     const selector = ensureSelector(entry);
     if(!confirm(`Draft ${label} を丸ごと削除します。このドラフトの全カードが失われ、元に戻せません。よろしいですか？`)) return;
+
+    const deletedWasActiveSeries = selector.series.some(s => s.id === seriesId && s.active);
 
     selector.series = selector.series.filter(s => s.id !== seriesId);
     delete selector.seriesCards[seriesId];
@@ -8896,6 +8955,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
     if(selectorActiveSeriesId === seriesId){
       selectorActiveSeriesId = selector.series.length > 0 ? selector.series[0].id : null;
+    }
+    // 採用中だった系列を削除した場合、採用ゼロを避けるため残った先頭系列を自動的に採用にする
+    if(deletedWasActiveSeries && selector.series.length > 0){
+      selector.series.forEach((s, i) => { s.active = (i === 0); });
     }
 
     const p = projects.find(x=>x.id===currentSelectorProjectId);
@@ -9533,19 +9596,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const entry = getSelectorEntry();
     const selector = ensureSelector(entry);
 
-    const isFirstDraft = selector.series.length === 0; // 最初の1本目だけ全選択でスタート
-
     const usedLabels = new Set(selector.series.map(s=>s.label));
     let labelChar = SELECTOR_LABELS.split('').find(ch => !usedLabels.has(ch)) || '?';
     const nameInput = document.getElementById('addDraftNameInput').value.trim();
 
     const newSeriesId = selectorUid('sr');
     const color = SELECTOR_COLORS[selector.series.length % SELECTOR_COLORS.length];
-    selector.series.push({ id: newSeriesId, label: labelChar, name: nameInput, color });
+    // 2026-08-29〜：新規登録するドラフトは「今すぐ使いたいから登録する」という前提のため、
+    // 系列自体を採用（active:true）にする。採用は常に1つだけなので、既存の他系列は自動的に不採用にする。
+    selector.series.forEach(s => { s.active = false; });
+    selector.series.push({ id: newSeriesId, label: labelChar, name: nameInput, color, active: true });
 
     const sentences = splitIntoSentences(text);
+    // 新規ドラフトは行（カード）も全て採用状態でスタート
     selector.seriesCards[newSeriesId] = sentences.map(sentence => ({
-      id: selectorUid('sc'), text: sentence, selected: isFirstDraft
+      id: selectorUid('sc'), text: sentence, selected: true
     }));
 
     // 新しく追加した系列をアクティブ表示にする
@@ -10381,7 +10446,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
       let labelChar = 'A';
       while(usedLabels.has(labelChar)){ labelChar = String.fromCharCode(labelChar.charCodeAt(0) + 1); }
       const sid = selectorUid('sr');
-      selector.series.push({ id: sid, label: labelChar, color: SELECTOR_COLORS[selector.series.length % SELECTOR_COLORS.length] });
+      // 2026-08-29〜：新規系列＝自動的に採用にするルールをここにも適用（既存系列は自動的に不採用へ）
+      selector.series.forEach(s => { s.active = false; });
+      selector.series.push({ id: sid, label: labelChar, color: SELECTOR_COLORS[selector.series.length % SELECTOR_COLORS.length], active: true });
 
       const sentences = splitIntoSentences(c.text);
       selector.seriesCards[sid] = sentences.map(sentence => ({
