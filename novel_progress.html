@@ -4608,7 +4608,25 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // 一部だけundefinedの場合（後から系列が追加された等）の保険：未定義はfalseに補完
       entry.selector.series.forEach(s => { if(s.active === undefined) s.active = false; });
     }
+    // 2026-08-29 新設：表示中の系列（viewingSeriesId）を章ごとのデータとして保持する。
+    // 旧設計ではアプリ全体で共有された1つのグローバル変数（selectorActiveSeriesId）だったため、
+    // 章をまたぐと「採用中の系列」と「表示中の系列」がズレる不具合があった。
+    // viewingSeriesIdが未設定、または現存しない系列を指している場合は「採用中の系列」を初期値にする。
+    if(!entry.selector.viewingSeriesId || !entry.selector.series.some(s => s.id === entry.selector.viewingSeriesId)){
+      const activeSeries = entry.selector.series.find(s => s.active);
+      entry.selector.viewingSeriesId = activeSeries ? activeSeries.id : (entry.selector.series[0] ? entry.selector.series[0].id : null);
+    }
     return entry.selector;
+  }
+
+  // 表示中の系列idを取得する（章ごとに保持されているviewingSeriesIdを返す）
+  function getViewingSeriesId(selector){
+    return selector.viewingSeriesId || null;
+  }
+
+  // 表示中の系列を切り替える（章ごとのデータに書き込む）
+  function setViewingSeriesId(selector, seriesId){
+    selector.viewingSeriesId = seriesId;
   }
 
   // 章ごとに「最後に触ったカード」をしおりとして記録（編集確定／採用切替／STAY・PUSH移動のたびに更新）
@@ -8924,8 +8942,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let selectorEditingDraft = '';
   let selectorLongPressTimer = null;
   let selectorLongPressFired = false;
-  // 2026-08-20 新設：表示中の系列ID（章ごとに切り替え可能。null＝系列未選択/系列なし）
-  let selectorActiveSeriesId = null;
+  // 2026-08-29廃止：表示中の系列IDは章ごとのデータ（entry.selector.viewingSeriesId）で管理するよう変更。
+  // 旧：let selectorActiveSeriesId = null;（アプリ全体で共有される単一のグローバル変数だったため、
+  // 章をまたぐと「採用中の系列」と「表示中の系列」がズレる不具合の原因になっていた）
   // 章比較パネル（閲覧のみ）の状態。開いていない場合はnull。
   // { chapterId, seriesId } を保持し、比較対象の章×系列を切り替えられる
   let selectorCompareState = null;
@@ -8962,11 +8981,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('selectorChapterLabel').textContent = ch ? `第${(p.plotChapters.indexOf(ch)+1)}章 ${ch.title||''} — Sentence Selector` : 'Sentence Selector';
 
     const entry = getSelectorEntry();
-    const selector = ensureSelector(entry);
-    // 表示する系列の初期値：直前に選んでいた系列があればそれを維持、無ければ先頭の系列
-    if(!selector.series.some(s => s.id === selectorActiveSeriesId)){
-      selectorActiveSeriesId = selector.series.length > 0 ? selector.series[0].id : null;
-    }
+    ensureSelector(entry); // viewingSeriesIdの初期化（未設定時は採用中の系列）はensureSelector内で行う
 
     renderSelectorAll();
     switchView('selectorView');
@@ -9023,31 +9038,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(selector.series.length === 0){
       legendEl.innerHTML = '<div class="selector-empty-text">まだドラフトがありません。右上の「＋ドラフト」から追加してください。</div>';
     } else {
-      if(!selector.series.some(s => s.id === selectorActiveSeriesId)){
-        selectorActiveSeriesId = selector.series[0].id;
-      }
-      const viewingSeries = selector.series.find(s => s.id === selectorActiveSeriesId);
+      const viewingSeriesId = getViewingSeriesId(selector);
+      const viewingSeries = selector.series.find(s => s.id === viewingSeriesId);
       const isViewingActive = !!(viewingSeries && viewingSeries.active);
       legendEl.innerHTML = `
         <select class="selector-series-select" id="selectorSeriesSelect">
-          ${selector.series.map(s => `<option value="${s.id}"${s.id===selectorActiveSeriesId?' selected':''}>${s.active ? '● ' : ''}Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`).join('')}
+          ${selector.series.map(s => `<option value="${s.id}"${s.id===viewingSeriesId?' selected':''}>${s.active ? '● ' : ''}Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`).join('')}
         </select>
         <button type="button" class="btn selector-active-toggle-btn${isViewingActive ? ' is-active' : ''}" id="selectorActiveToggleBtn" style="font-size:0.62rem; padding:6px 10px; flex-shrink:0;" title="このドラフトを本文に採用する">${isViewingActive ? '✓ 採用中' : '採用にする'}</button>
         <button type="button" class="selector-legend-delete-btn" id="selectorDeleteSeriesBtn" title="表示中のドラフトを全削除">🗑</button>
       `;
       document.getElementById('selectorSeriesSelect').onchange = (e) => {
         exitReorderModeIfActive();
-        selectorActiveSeriesId = e.target.value;
+        setViewingSeriesId(selector, e.target.value);
         selectorEditingCardId = null;
         renderSelectorAll();
       };
       document.getElementById('selectorActiveToggleBtn').onclick = () => {
         exitReorderModeIfActive();
-        toggleSeriesActive(selectorActiveSeriesId);
+        toggleSeriesActive(getViewingSeriesId(selector));
       };
       document.getElementById('selectorDeleteSeriesBtn').onclick = () => {
         exitReorderModeIfActive();
-        const s = selector.series.find(x=>x.id===selectorActiveSeriesId);
+        const s = selector.series.find(x=>x.id===getViewingSeriesId(selector));
         if(s) deleteSelectorDraft(s.id, s.label);
       };
     }
@@ -9098,8 +9111,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const stillExists = (selector.seriesCards[seriesId]||[]).some(c => c.id === selectorEditingCardId);
       if(!stillExists) selectorEditingCardId = null;
     }
-    if(selectorActiveSeriesId === seriesId){
-      selectorActiveSeriesId = selector.series.length > 0 ? selector.series[0].id : null;
+    if(getViewingSeriesId(selector) === seriesId){
+      setViewingSeriesId(selector, selector.series.length > 0 ? selector.series[0].id : null);
     }
     // 採用中だった系列を削除した場合、採用ゼロを避けるため残った先頭系列を自動的に採用にする
     if(deletedWasActiveSeries && selector.series.length > 0){
@@ -9124,7 +9137,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       return;
     }
 
-    const s = selector.series.find(x=>x.id===selectorActiveSeriesId);
+    const s = selector.series.find(x=>x.id===getViewingSeriesId(selector));
     if(!s){ wrap.innerHTML = ''; return; }
     const cards = selector.seriesCards[s.id] || [];
 
@@ -9704,14 +9717,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const selector = ensureSelector(entry);
 
     const topSeriesSelect = document.getElementById('selectorCompareTopSeriesSelect');
+    const viewingSeriesId = getViewingSeriesId(selector);
     topSeriesSelect.innerHTML = selector.series.map(s =>
-      `<option value="${s.id}"${s.id===selectorActiveSeriesId?' selected':''}>Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`
+      `<option value="${s.id}"${s.id===viewingSeriesId?' selected':''}>Draft ${s.label}${s.name ? '　' + escapeHTML(s.name) : ''}</option>`
     ).join('');
     topSeriesSelect.onchange = (e) => {
       renderSelectorCompareCardsInto('selectorCompareTopRows', selector, e.target.value);
     };
 
-    renderSelectorCompareCardsInto('selectorCompareTopRows', selector, selectorActiveSeriesId);
+    renderSelectorCompareCardsInto('selectorCompareTopRows', selector, viewingSeriesId);
   }
 
   function renderSelectorCompare(){
@@ -9832,7 +9846,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }));
 
     // 新しく追加した系列をアクティブ表示にする
-    selectorActiveSeriesId = newSeriesId;
+    setViewingSeriesId(selector, newSeriesId);
 
     document.getElementById('addDraftModalOverlay').classList.remove('active');
     renderSelectorAll();
@@ -10667,6 +10681,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // 2026-08-29〜：新規系列＝自動的に採用にするルールをここにも適用（既存系列は自動的に不採用へ）
       selector.series.forEach(s => { s.active = false; });
       selector.series.push({ id: sid, label: labelChar, color: SELECTOR_COLORS[selector.series.length % SELECTOR_COLORS.length], active: true });
+      setViewingSeriesId(selector, sid); // 表示中系列も新規系列に合わせておく（後で開いたとき採用中の内容がそのまま見える）
 
       const sentences = splitIntoSentences(c.text);
       selector.seriesCards[sid] = sentences.map(sentence => ({
