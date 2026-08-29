@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>activator — タスク管理</title>
+<style>
+:root {
+  --bg:#1a1814;
+  --bg2:#211f1b;
+  --bg3:#2a2722;
+  --surface:#302d27;
+  --accent:#c8a96e;
+  --text:#e8e0d0;
+  --text2:#a09880;
+  --text3:#706858;
+  --border:#3f3b34;
+  --ok:#7ec8a8;
+  --danger:#c06040;
+  --font-ui:'Courier New',monospace;
+  --font-body:'Georgia',serif;
+
+  /* 象限カラー（2026-08-26確定の4象限） */
+  --q-urgent-important:#c06040;   /* 緊急×重要 */
+  --q-important-only:#c8a96e;     /* 重要のみ */
+  --q-urgent-only:#8fa8c8;        /* 緊急のみ */
+  --q-neither:#706858;            /* どちらでもない */
+}
+
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  min-height:100vh;
+  padding-bottom:80px;
+}
+
+button, input, select, textarea { font-family:inherit; color:inherit; }
+button {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:8px 14px;
+  font-size:0.85rem;
+  cursor:pointer;
+  color:var(--text2);
+}
+button:hover { color:var(--text); border-color:var(--text3); }
+input[type="text"], textarea, select {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:8px 10px;
+  font-size:0.95rem;
+  width:100%;
+}
+
+/* ---------- Header ---------- */
+header {
+  padding:20px 16px 14px;
+  border-bottom:1px solid var(--border);
+  position:sticky;
+  top:0;
+  background:rgba(26,24,20,0.94);
+  backdrop-filter:blur(6px);
+  z-index:50;
+}
+header h1 {
+  font-family:var(--font-ui);
+  font-size:1.05rem;
+  font-weight:400;
+  letter-spacing:0.05em;
+  color:var(--accent);
+}
+
+/* ---------- Header rotator（Manuscriptと同一パターン） ---------- */
+.header-rotator-wrap { margin-top:10px; }
+.header-rotator {
+  position:relative;
+  height:22px;
+  overflow:hidden;
+}
+.rotator-slide {
+  display:flex;
+  align-items:center;
+  position:absolute;
+  top:0; left:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  transform:translateX(24px);
+  transition:transform .35s ease, opacity .35s ease;
+  pointer-events:none;
+  font-size:0.82rem;
+  color:var(--text2);
+}
+.rotator-slide.active { opacity:1; transform:translateX(0); pointer-events:auto; }
+.rotator-slide.leaving { opacity:0; transform:translateX(-24px); }
+.rotator-slide .deadline-banner { display:flex; align-items:center; gap:6px; cursor:pointer; }
+.rotator-slide .deadline-icon { color:var(--danger); }
+.rotator-dots { display:flex; gap:5px; justify-content:center; margin-top:6px; }
+.rotator-dot { width:5px; height:5px; border-radius:50%; background:var(--border); cursor:pointer; }
+.rotator-dot.active { background:var(--accent); }
+
+main { padding:16px; max-width:640px; margin:0 auto; }
+
+section { margin-bottom:28px; }
+.section-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.section-heading h2 {
+  font-family:var(--font-ui);
+  font-size:0.82rem;
+  font-weight:400;
+  color:var(--text3);
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+}
+
+/* ---------- マトリクス（トップ画面） ---------- */
+.matrix-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.matrix-quadrant {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px;
+  min-height:110px;
+  cursor:pointer;
+}
+.matrix-quadrant:active { border-color:var(--text3); }
+.mq-label {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-family:var(--font-ui);
+  font-size:0.7rem;
+  color:var(--text2);
+  margin-bottom:8px;
+}
+.mq-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.mq-urgent-important .mq-dot { background:var(--q-urgent-important); }
+.mq-important-only .mq-dot { background:var(--q-important-only); }
+.mq-urgent-only .mq-dot { background:var(--q-urgent-only); }
+.mq-neither .mq-dot { background:var(--q-neither); }
+
+.mq-preview-card {
+  font-size:0.78rem;
+  color:var(--text);
+  background:var(--bg3);
+  border-radius:5px;
+  padding:6px 8px;
+  margin-bottom:5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.mq-more {
+  font-size:0.72rem;
+  color:var(--text3);
+  padding-left:2px;
+}
+.mq-empty {
+  font-size:0.75rem;
+  color:var(--text3);
+  font-style:italic;
+  padding-top:8px;
+}
+
+/* ---------- 未選別カード置き場 ---------- */
+.unsorted-strip {
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding-bottom:6px;
+  scrollbar-width:none;
+}
+.unsorted-strip::-webkit-scrollbar { display:none; }
+.unsorted-add-btn {
+  flex-shrink:0;
+  width:90px;
+  height:90px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:1.6rem;
+  color:var(--accent);
+  border:1px dashed var(--border);
+  background:var(--bg2);
+}
+.unsorted-card {
+  flex-shrink:0;
+  width:120px;
+  min-height:90px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px;
+  font-size:0.78rem;
+  cursor:grab;
+}
+.unsorted-warning {
+  display:none;
+  align-items:center;
+  gap:6px;
+  font-size:0.75rem;
+  color:var(--danger);
+  margin-top:6px;
+}
+.unsorted-warning.active { display:flex; }
+
+/* ---------- 実施済み実績 ---------- */
+.achieved-list {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.achieved-item {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:8px 10px;
+  font-size:0.82rem;
+  color:var(--text2);
+}
+.achieved-check { color:var(--ok); flex-shrink:0; }
+
+/* ---------- 象限別一覧画面 ---------- */
+.quadrant-list-view { display:none; }
+.quadrant-list-view.active { display:block; }
+.top-view.hidden { display:none; }
+
+.ql-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:16px;
+}
+.ql-title { display:flex; align-items:center; gap:10px; }
+.ql-icon {
+  width:36px; height:36px;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+.ql-title h2 { font-size:1rem; font-weight:400; }
+.ql-count { font-size:0.78rem; color:var(--text3); }
+
+.ql-pinned-zone {
+  border:1px dashed var(--accent);
+  border-radius:8px;
+  padding:10px;
+  margin-bottom:14px;
+  min-height:56px;
+}
+.ql-pinned-zone-label {
+  font-family:var(--font-ui);
+  font-size:0.68rem;
+  color:var(--accent);
+  letter-spacing:0.05em;
+  margin-bottom:8px;
+}
+.ql-pinned-empty {
+  font-size:0.78rem;
+  color:var(--text3);
+  font-style:italic;
+}
+
+.task-card {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-left-width:3px;
+  border-radius:8px;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:8px;
+  cursor:pointer;
+}
+.task-card:active { border-color:var(--text3); }
+.tc-body { flex:1; min-width:0; }
+.tc-meta { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+.tc-id { font-size:0.68rem; font-family:var(--font-ui); color:var(--text3); }
+.tc-badge {
+  font-size:0.68rem;
+  padding:2px 7px;
+  border-radius:4px;
+  background:var(--bg3);
+  color:var(--text2);
+}
+.tc-title { font-size:0.92rem; margin-bottom:6px; }
+.tc-progress { display:flex; align-items:center; gap:6px; }
+.tc-progress-track {
+  flex:1; max-width:180px;
+  height:5px;
+  background:var(--bg);
+  border-radius:3px;
+  overflow:hidden;
+}
+.tc-progress-fill { height:100%; background:var(--accent); }
+.tc-progress-text { font-size:0.7rem; color:var(--text3); white-space:nowrap; }
+.tc-thumb {
+  width:48px; height:48px;
+  border-radius:6px;
+  object-fit:cover;
+  flex-shrink:0;
+  background:var(--bg3);
+}
+
+/* ---------- モーダルシート（編集モーダル） ---------- */
+.modal-overlay {
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(10,9,7,0.75);
+  z-index:500;
+  align-items:flex-end;
+  justify-content:center;
+}
+.modal-overlay.active { display:flex; }
+.modal-sheet {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-bottom:none;
+  border-radius:16px 16px 0 0;
+  width:100%;
+  max-width:560px;
+  max-height:90dvh;
+  overflow-y:auto;
+  padding:10px 20px 24px;
+}
+.sheet-grabber {
+  width:36px; height:4px;
+  background:var(--border);
+  border-radius:2px;
+  margin:0 auto 16px;
+}
+.field-label {
+  font-family:var(--font-ui);
+  font-size:0.7rem;
+  color:var(--text3);
+  letter-spacing:0.05em;
+  margin:14px 0 6px;
+}
+.field-label:first-of-type { margin-top:4px; }
+
+/* 象限ミニマトリクス（2×2ボタン） */
+.mini-matrix {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.mm-btn {
+  text-align:left;
+  padding:10px 12px;
+  font-size:0.82rem;
+  border-radius:6px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.mm-btn.selected { border-width:2px; font-weight:bold; }
+.mm-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+.image-row { display:flex; gap:8px; align-items:center; }
+.image-thumb-wrap {
+  width:64px; height:64px;
+  border-radius:8px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.image-thumb-wrap img { width:100%; height:100%; object-fit:cover; }
+.image-add-btn {
+  width:64px; height:64px;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:1.2rem;
+}
+
+.sheet-footer {
+  display:flex;
+  gap:8px;
+  margin-top:22px;
+}
+.sheet-footer button { flex:1; }
+.btn-complete { background:var(--ok); color:var(--bg); border-color:var(--ok); }
+.btn-complete:hover { color:var(--bg); }
+.btn-delete { color:var(--danger); border-color:var(--danger); }
+
+/* ---------- Fab ---------- */
+.back-btn { font-size:0.8rem; }
+
+/* トリミング調整モーダル（簡易版） */
+.crop-modal .modal-sheet { padding-bottom:20px; }
+.crop-stage {
+  width:100%;
+  aspect-ratio:1;
+  background:var(--bg3);
+  border-radius:8px;
+  overflow:hidden;
+  position:relative;
+  touch-action:none;
+}
+.crop-stage img {
+  position:absolute;
+  max-width:none;
+  cursor:grab;
+}
+
+@media (min-width:640px) {
+  .modal-overlay { align-items:center; }
+  .modal-sheet { border-radius:12px; border-bottom:1px solid var(--border); margin-bottom:0; max-height:85dvh; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>activator</h1>
+  <div class="header-rotator-wrap">
+    <div class="header-rotator" id="headerRotator">
+      <div class="rotator-slide active" data-slide="stats">
+        <span id="statsSlideText">未選別 0件・進行中 0件</span>
+      </div>
+      <div class="rotator-slide" data-slide="deadline" id="deadlineSlide">
+        <div class="deadline-banner" id="deadlineBanner">
+          <span class="deadline-icon">●</span>
+          <span id="deadlineText">直近の予定はありません</span>
+        </div>
+      </div>
+    </div>
+    <div class="rotator-dots" id="rotatorDots"></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ トップ画面 ============ -->
+  <div class="top-view" id="topView">
+
+    <section>
+      <div class="section-heading"><h2>マトリクス</h2></div>
+      <div class="matrix-grid">
+        <div class="matrix-quadrant mq-urgent-important" data-quadrant="urgent-important" onclick="openQuadrantList('urgent-important')">
+          <div class="mq-label"><span class="mq-dot"></span>緊急 × 重要</div>
+          <div id="mqPreview-urgent-important"></div>
+        </div>
+        <div class="matrix-quadrant mq-important-only" data-quadrant="important-only" onclick="openQuadrantList('important-only')">
+          <div class="mq-label"><span class="mq-dot"></span>重要のみ</div>
+          <div id="mqPreview-important-only"></div>
+        </div>
+        <div class="matrix-quadrant mq-urgent-only" data-quadrant="urgent-only" onclick="openQuadrantList('urgent-only')">
+          <div class="mq-label"><span class="mq-dot"></span>緊急のみ</div>
+          <div id="mqPreview-urgent-only"></div>
+        </div>
+        <div class="matrix-quadrant mq-neither" data-quadrant="neither" onclick="openQuadrantList('neither')">
+          <div class="mq-label"><span class="mq-dot"></span>どちらでもない</div>
+          <div id="mqPreview-neither"></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-heading"><h2>未選別カード</h2></div>
+      <div class="unsorted-strip" id="unsortedStrip">
+        <div class="unsorted-add-btn" onclick="createNewTask()">＋</div>
+      </div>
+      <div class="unsorted-warning" id="unsortedWarning">
+        <span>⚠</span><span>未選別カードが10件を超えています。マトリクスへの振り分けをおすすめします</span>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-heading"><h2>実施済み実績</h2></div>
+      <div class="achieved-list" id="achievedList"></div>
+    </section>
+
+  </div>
+
+  <!-- ============ 象限別一覧画面 ============ -->
+  <div class="quadrant-list-view" id="quadrantListView">
+    <div class="ql-header">
+      <div class="ql-title">
+        <div class="ql-icon" id="qlIcon"></div>
+        <div>
+          <h2 id="qlTitle">—</h2>
+          <div class="ql-count" id="qlCount">0件のタスク</div>
+        </div>
+      </div>
+      <button class="back-btn" onclick="closeQuadrantList()">← マトリクスへ戻る</button>
+    </div>
+
+    <div class="ql-pinned-zone" id="qlPinnedZone">
+      <div class="ql-pinned-zone-label">優先度上位（最大5枚・並び替え対象外）</div>
+      <div id="qlPinnedCards"></div>
+      <div class="ql-pinned-empty" id="qlPinnedEmpty">ここにカードをドラッグすると優先度上位として固定されます</div>
+    </div>
+
+    <div id="qlOtherCards"></div>
+  </div>
+
+</main>
+
+<!-- ============ 編集モーダル ============ -->
+<div class="modal-overlay" id="editModalOverlay">
+  <div class="modal-sheet">
+    <div class="sheet-grabber"></div>
+
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+      <div>
+        <div class="field-label" style="margin-top:4px;">作品番号 / ブランド・アプリ</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="tc-id" id="editTaskId">—</span>
+          <span class="tc-badge" id="editTaskBrand">—</span>
+        </div>
+      </div>
+      <div class="image-thumb-wrap" id="editImageThumbWrap" onclick="document.getElementById('editImageInput').click()" style="cursor:pointer;">
+        <span style="font-size:0.68rem; color:var(--text3);">画像</span>
+      </div>
+      <input type="file" id="editImageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
+    </div>
+
+    <div class="field-label">タイトル</div>
+    <input type="text" id="editTaskTitle" placeholder="作品名・開発内容">
+
+    <div class="field-label">象限</div>
+    <div class="mini-matrix" id="editMiniMatrix">
+      <button type="button" class="mm-btn" data-quadrant="urgent-important" style="background:rgba(192,96,64,0.12); border-color:var(--q-urgent-important); color:var(--q-urgent-important);" onclick="selectQuadrant('urgent-important')">
+        <span class="mm-dot" style="background:var(--q-urgent-important)"></span>緊急×重要
+      </button>
+      <button type="button" class="mm-btn" data-quadrant="important-only" style="background:rgba(200,169,110,0.12); border-color:var(--q-important-only); color:var(--q-important-only);" onclick="selectQuadrant('important-only')">
+        <span class="mm-dot" style="background:var(--q-important-only)"></span>重要のみ
+      </button>
+      <button type="button" class="mm-btn" data-quadrant="urgent-only" style="background:rgba(143,168,200,0.12); border-color:var(--q-urgent-only); color:var(--q-urgent-only);" onclick="selectQuadrant('urgent-only')">
+        <span class="mm-dot" style="background:var(--q-urgent-only)"></span>緊急のみ
+      </button>
+      <button type="button" class="mm-btn" data-quadrant="neither" style="background:rgba(112,104,88,0.12); border-color:var(--q-neither); color:var(--q-neither);" onclick="selectQuadrant('neither')">
+        <span class="mm-dot" style="background:var(--q-neither)"></span>どちらでもない
+      </button>
+    </div>
+
+    <div id="editWorkFields">
+      <div class="field-label">制作工程</div>
+      <select id="editPhaseSelect"></select>
+    </div>
+
+    <div class="field-label">日付（任意）</div>
+    <input type="date" id="editTaskDate">
+
+    <div class="field-label">メモ・詳細</div>
+    <textarea id="editTaskMemo" rows="3" placeholder="メモを入力"></textarea>
+
+    <div class="sheet-footer">
+      <button type="button" class="btn-complete" onclick="markComplete()">✓ 完了にする</button>
+      <button type="button" onclick="closeEditModal()">閉じる</button>
+    </div>
+    <div class="sheet-footer">
+      <button type="button" class="btn-delete" onclick="deleteCurrentTask()">このタスクを削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ トリミング調整モーダル（簡易版・Manuscript方式踏襲） ============ -->
+<div class="modal-overlay crop-modal" id="cropModalOverlay">
+  <div class="modal-sheet">
+    <div class="sheet-grabber"></div>
+    <div class="field-label">画像の位置を調整（ドラッグで移動）</div>
+    <div class="crop-stage" id="cropStage">
+      <img id="cropStageImg" src="" alt="">
+    </div>
+    <div class="sheet-footer">
+      <button type="button" onclick="confirmCrop()">この位置で確定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   activator — データ構造・状態管理
+   2026-08-26 制作管理資料の確定仕様に基づく初期実装
+   ========================================================= */
+
+const QUADRANTS = {
+  'urgent-important': { label:'緊急 × 重要', color:'var(--q-urgent-important)' },
+  'important-only':   { label:'重要のみ',     color:'var(--q-important-only)' },
+  'urgent-only':       { label:'緊急のみ',     color:'var(--q-urgent-only)' },
+  'neither':           { label:'どちらでもない', color:'var(--q-neither)' }
+};
+
+const PHASES = [
+  '1. 素材収集','2. 設定・プロット構築','3. キービジュアル作成','4. 本文執筆',
+  '5. 加筆修正','6. 推敲','7. 画像準備','8. 完成','9. 公開＆ポスト','10. まとめ記事で紹介'
+];
+
+const UNSORTED_WARNING_THRESHOLD = 10; // 2026-08-26確定
+const PINNED_MAX = 5; // 2026-08-26確定
+
+let tasks = [];       // {id, title, quadrant, category('work'|'tool'), brand, phase, date, memo, image:{data,x,y}, pinned, status, createdAt}
+let achieved = [];    // 完了済みタスクのアーカイブ
+let currentEditId = null;
+let pendingImageDataUrl = null;
+let cropPos = {x:50, y:50};
+
+/* ---------- 永続化（暫定：localStorage。GitHub同期は次段階で実装） ---------- */
+function save(){
+  localStorage.setItem('activator_tasks', JSON.stringify(tasks));
+  localStorage.setItem('activator_achieved', JSON.stringify(achieved));
+}
+function load(){
+  try{
+    tasks = JSON.parse(localStorage.getItem('activator_tasks') || '[]');
+    achieved = JSON.parse(localStorage.getItem('activator_achieved') || '[]');
+  }catch(e){ tasks = []; achieved = []; }
+}
+
+function newTaskSkeleton(){
+  return {
+    id: 'T-' + Date.now().toString(36),
+    title: '',
+    quadrant: null, // null = 未選別
+    category: 'work',
+    brand: '',
+    phase: 0,
+    date: '',
+    memo: '',
+    image: null, // {data, x, y}
+    pinned: false,
+    status: 'unsorted', // unsorted | active | complete
+    createdAt: Date.now()
+  };
+}
+
+/* ---------- トップ画面レンダリング ---------- */
+function renderTop(){
+  renderMatrixPreviews();
+  renderUnsorted();
+  renderAchieved();
+  renderRotatorStats();
+}
+
+function renderMatrixPreviews(){
+  Object.keys(QUADRANTS).forEach(q => {
+    const wrap = document.getElementById('mqPreview-' + q);
+    const inQuadrant = tasks.filter(t => t.quadrant === q && t.status !== 'complete');
+    // 上部固定(pinned)優先、その後は作成日の古い順（2026-08-26確定）
+    const sorted = [...inQuadrant].sort((a,b) => {
+      if(a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return a.createdAt - b.createdAt;
+    });
+    wrap.innerHTML = '';
+    if(sorted.length === 0){
+      wrap.innerHTML = '<div class="mq-empty">タスクなし</div>';
+      return;
+    }
+    sorted.slice(0,3).forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'mq-preview-card';
+      div.textContent = t.title || '（無題）';
+      wrap.appendChild(div);
+    });
+    if(sorted.length > 3){
+      const more = document.createElement('div');
+      more.className = 'mq-more';
+      more.textContent = `他 ${sorted.length - 3} 件`;
+      wrap.appendChild(more);
+    }
+  });
+}
+
+function renderUnsorted(){
+  const strip = document.getElementById('unsortedStrip');
+  const addBtn = strip.querySelector('.unsorted-add-btn');
+  strip.innerHTML = '';
+  strip.appendChild(addBtn);
+
+  const unsorted = tasks.filter(t => t.status === 'unsorted');
+  unsorted.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'unsorted-card';
+    card.textContent = t.title || '（無題）';
+    card.onclick = () => openEditModal(t.id);
+    strip.appendChild(card);
+  });
+
+  const warning = document.getElementById('unsortedWarning');
+  warning.classList.toggle('active', unsorted.length > UNSORTED_WARNING_THRESHOLD);
+}
+
+function renderAchieved(){
+  const list = document.getElementById('achievedList');
+  list.innerHTML = '';
+  if(achieved.length === 0){
+    list.innerHTML = '<div style="font-size:0.8rem; color:var(--text3); font-style:italic;">まだ実績がありません</div>';
+    return;
+  }
+  achieved.slice().reverse().slice(0,10).forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'achieved-item';
+    item.innerHTML = `<span class="achieved-check">✓</span><span>${escapeHtml(t.title || '（無題）')}</span>`;
+    list.appendChild(item);
+  });
+}
+
+function renderRotatorStats(){
+  const unsortedCount = tasks.filter(t => t.status === 'unsorted').length;
+  const activeCount = tasks.filter(t => t.status === 'active').length;
+  document.getElementById('statsSlideText').textContent = `未選別 ${unsortedCount}件・進行中 ${activeCount}件`;
+
+  // 直近の日付イベント（2026-08-26確定：ヘッダーローテーターに1行表示）
+  const withDate = tasks.filter(t => t.date && t.status !== 'complete');
+  const deadlineSlide = document.getElementById('deadlineSlide');
+  if(withDate.length === 0){
+    deadlineSlide.style.display = 'none';
+  }else{
+    withDate.sort((a,b) => new Date(a.date) - new Date(b.date));
+    const nearest = withDate[0];
+    const days = Math.ceil((new Date(nearest.date) - new Date().setHours(0,0,0,0)) / 86400000);
+    const dayLabel = days === 0 ? '本日' : (days > 0 ? `あと${days}日` : `${-days}日超過`);
+    document.getElementById('deadlineText').textContent = `${dayLabel}：${nearest.title || '（無題）'}`;
+    deadlineSlide.style.display = '';
+  }
+  setupHeaderRotator();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- 象限別一覧画面 ---------- */
+let currentQuadrant = null;
+
+function openQuadrantList(q){
+  currentQuadrant = q;
+  document.getElementById('topView').classList.add('hidden');
+  document.getElementById('quadrantListView').classList.add('active');
+
+  const info = QUADRANTS[q];
+  document.getElementById('qlTitle').textContent = info.label;
+  document.getElementById('qlIcon').style.background = info.color;
+  renderQuadrantList();
+}
+
+function closeQuadrantList(){
+  document.getElementById('topView').classList.remove('hidden');
+  document.getElementById('quadrantListView').classList.remove('active');
+  renderTop();
+}
+
+function renderQuadrantList(){
+  const inQuadrant = tasks.filter(t => t.quadrant === currentQuadrant && t.status !== 'complete');
+  document.getElementById('qlCount').textContent = `${inQuadrant.length}件のタスク`;
+
+  const pinned = inQuadrant.filter(t => t.pinned).slice(0, PINNED_MAX);
+  // 下部：ピン留めされていないもの。作成日の古い順（2026-08-26確定：放置防止）
+  const others = inQuadrant.filter(t => !t.pinned).sort((a,b) => a.createdAt - b.createdAt);
+
+  const pinnedWrap = document.getElementById('qlPinnedCards');
+  const pinnedEmpty = document.getElementById('qlPinnedEmpty');
+  pinnedWrap.innerHTML = '';
+  pinnedEmpty.style.display = pinned.length === 0 ? 'block' : 'none';
+  pinned.forEach(t => pinnedWrap.appendChild(renderTaskCard(t)));
+
+  const othersWrap = document.getElementById('qlOtherCards');
+  othersWrap.innerHTML = '';
+  others.forEach(t => othersWrap.appendChild(renderTaskCard(t)));
+}
+
+function renderTaskCard(t){
+  const card = document.createElement('div');
+  card.className = 'task-card';
+  card.style.borderLeftColor = QUADRANTS[t.quadrant] ? QUADRANTS[t.quadrant].color : 'var(--border)';
+  card.onclick = () => openEditModal(t.id);
+
+  let progressHtml = '';
+  if(t.category === 'work'){
+    const pct = Math.round((t.phase / (PHASES.length - 1)) * 100);
+    progressHtml = `
+      <div class="tc-progress">
+        <div class="tc-progress-track"><div class="tc-progress-fill" style="width:${pct}%"></div></div>
+        <span class="tc-progress-text">工程${t.phase + 1}/${PHASES.length}</span>
+      </div>`;
+  }
+
+  const thumbHtml = t.image
+    ? `<img class="tc-thumb" src="${t.image.data}" style="object-position:${t.image.x}% ${t.image.y}%">`
+    : '';
+
+  card.innerHTML = `
+    <div class="tc-body">
+      <div class="tc-meta">
+        <span class="tc-id">${t.id}</span>
+        ${t.brand ? `<span class="tc-badge">${escapeHtml(t.brand)}</span>` : ''}
+      </div>
+      <div class="tc-title">${escapeHtml(t.title || '（無題）')}</div>
+      ${progressHtml}
+    </div>
+    ${thumbHtml}
+  `;
+  return card;
+}
+
+/* ---------- 編集モーダル ---------- */
+function createNewTask(){
+  const t = newTaskSkeleton();
+  tasks.push(t);
+  save();
+  openEditModal(t.id);
+}
+
+function openEditModal(id){
+  currentEditId = id;
+  const t = tasks.find(x => x.id === id);
+  if(!t) return;
+
+  document.getElementById('editTaskId').textContent = t.id;
+  document.getElementById('editTaskBrand').textContent = t.brand || '未設定';
+  document.getElementById('editTaskTitle').value = t.title || '';
+  document.getElementById('editTaskDate').value = t.date || '';
+  document.getElementById('editTaskMemo').value = t.memo || '';
+
+  // 制作工程セレクト
+  const sel = document.getElementById('editPhaseSelect');
+  sel.innerHTML = '';
+  PHASES.forEach((label, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  sel.value = t.phase || 0;
+
+  // 象限ミニマトリクスの選択状態
+  document.querySelectorAll('#editMiniMatrix .mm-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.quadrant === t.quadrant);
+  });
+
+  // 画像サムネイル（右上、クリックで差し替え）
+  const thumbWrap = document.getElementById('editImageThumbWrap');
+  if(t.image){
+    thumbWrap.innerHTML = `<img src="${t.image.data}" style="width:100%; height:100%; object-fit:cover; object-position:${t.image.x}% ${t.image.y}%">`;
+  }else{
+    thumbWrap.innerHTML = '<span style="font-size:0.68rem; color:var(--text3);">画像</span>';
+  }
+
+  document.getElementById('editModalOverlay').classList.add('active');
+}
+
+function closeEditModal(){
+  // 入力内容を保存してから閉じる
+  const t = tasks.find(x => x.id === currentEditId);
+  if(t){
+    t.title = document.getElementById('editTaskTitle').value.trim();
+    t.date = document.getElementById('editTaskDate').value;
+    t.memo = document.getElementById('editTaskMemo').value;
+    t.phase = parseInt(document.getElementById('editPhaseSelect').value, 10) || 0;
+    save();
+  }
+  document.getElementById('editModalOverlay').classList.remove('active');
+  currentEditId = null;
+  renderTop();
+  if(document.getElementById('quadrantListView').classList.contains('active')){
+    renderQuadrantList();
+  }
+}
+
+function selectQuadrant(q){
+  const t = tasks.find(x => x.id === currentEditId);
+  if(!t) return;
+  t.quadrant = q;
+  t.status = 'active';
+  document.querySelectorAll('#editMiniMatrix .mm-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.quadrant === q);
+  });
+  save();
+}
+
+function markComplete(){
+  const t = tasks.find(x => x.id === currentEditId);
+  if(!t) return;
+  t.status = 'complete';
+  t.title = document.getElementById('editTaskTitle').value.trim() || t.title;
+  achieved.push(t);
+  tasks = tasks.filter(x => x.id !== t.id);
+  save();
+  closeEditModal();
+}
+
+function deleteCurrentTask(){
+  if(!confirm('このタスクを削除します。よろしいですか？')) return;
+  tasks = tasks.filter(x => x.id !== currentEditId);
+  save();
+  document.getElementById('editModalOverlay').classList.remove('active');
+  currentEditId = null;
+  renderTop();
+  if(document.getElementById('quadrantListView').classList.contains('active')){
+    renderQuadrantList();
+  }
+}
+
+/* ---------- 画像アップロード → 圧縮/リサイズ → トリミング調整（Manuscript方式踏襲） ---------- */
+function handleImageSelect(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // 圧縮・リサイズ：長辺600pxまで縮小してJPEG化（2026-08-26確定：圧縮してから保持）
+      const MAX_SIDE = 600;
+      let w = img.width, h = img.height;
+      if(w > h && w > MAX_SIDE){ h = Math.round(h * MAX_SIDE / w); w = MAX_SIDE; }
+      else if(h > MAX_SIDE){ w = Math.round(w * MAX_SIDE / h); h = MAX_SIDE; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      pendingImageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      openCropModal();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  evt.target.value = '';
+}
+
+function openCropModal(){
+  cropPos = {x:50, y:50};
+  const stageImg = document.getElementById('cropStageImg');
+  stageImg.src = pendingImageDataUrl;
+  stageImg.style.left = '50%';
+  stageImg.style.top = '50%';
+  stageImg.style.transform = 'translate(-50%,-50%)';
+  stageImg.style.width = '150%';
+  document.getElementById('cropModalOverlay').classList.add('active');
+  setupCropDrag();
+}
+
+function setupCropDrag(){
+  const stage = document.getElementById('cropStage');
+  const img = document.getElementById('cropStageImg');
+  let dragging = false, startX, startY, startPos;
+
+  function onDown(x, y){
+    dragging = true; startX = x; startY = y; startPos = {...cropPos};
+  }
+  function onMove(x, y){
+    if(!dragging) return;
+    const rect = stage.getBoundingClientRect();
+    const dxPct = ((x - startX) / rect.width) * 100;
+    const dyPct = ((y - startY) / rect.height) * 100;
+    cropPos.x = Math.min(100, Math.max(0, startPos.x - dxPct));
+    cropPos.y = Math.min(100, Math.max(0, startPos.y - dyPct));
+    img.style.objectPosition = `${cropPos.x}% ${cropPos.y}%`;
+  }
+  function onUp(){ dragging = false; }
+
+  stage.onmousedown = (e) => onDown(e.clientX, e.clientY);
+  window.onmousemove = (e) => onMove(e.clientX, e.clientY);
+  window.onmouseup = onUp;
+  stage.ontouchstart = (e) => onDown(e.touches[0].clientX, e.touches[0].clientY);
+  stage.ontouchmove = (e) => { onMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+  stage.ontouchend = onUp;
+
+  // 簡易版：object-fit:cover相当の見た目にするため、imgをstage全体に敷き詰めてobject-positionで動かす方式に変更
+  img.style.position = 'absolute';
+  img.style.inset = '0';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'cover';
+  img.style.objectPosition = `${cropPos.x}% ${cropPos.y}%`;
+  img.style.transform = 'none';
+  img.style.cursor = 'grab';
+}
+
+function confirmCrop(){
+  const t = tasks.find(x => x.id === currentEditId);
+  if(t){
+    t.image = { data: pendingImageDataUrl, x: cropPos.x, y: cropPos.y };
+    save();
+    const thumbWrap = document.getElementById('editImageThumbWrap');
+    thumbWrap.innerHTML = `<img src="${t.image.data}" style="width:100%; height:100%; object-fit:cover; object-position:${t.image.x}% ${t.image.y}%">`;
+  }
+  document.getElementById('cropModalOverlay').classList.remove('active');
+}
+
+/* ---------- ヘッダーローテーター（Manuscriptと同一パターン） ---------- */
+let rotatorTimer = null;
+let rotatorIndex = 0;
+let rotatorSlideEls = [];
+const headerRotateMs = 4000;
+
+function setupHeaderRotator(){
+  const allSlides = Array.from(document.querySelectorAll('#headerRotator .rotator-slide'));
+  const visibleSlides = allSlides.filter(el => el.style.display !== 'none');
+  rotatorSlideEls = visibleSlides;
+  if(rotatorIndex >= rotatorSlideEls.length) rotatorIndex = 0;
+
+  allSlides.forEach(el => el.classList.remove('active','leaving'));
+  const dotsWrap = document.getElementById('rotatorDots');
+  dotsWrap.innerHTML = '';
+  if(rotatorSlideEls.length <= 1){
+    if(rotatorSlideEls[0]) rotatorSlideEls[0].classList.add('active');
+    if(rotatorTimer) clearInterval(rotatorTimer);
+    return;
+  }
+  rotatorSlideEls.forEach((el,i) => {
+    const dot = document.createElement('div');
+    dot.className = 'rotator-dot' + (i===rotatorIndex ? ' active':'');
+    dot.onclick = (e) => { e.stopPropagation(); goToRotatorSlide(i); restartRotatorTimer(); };
+    dotsWrap.appendChild(dot);
+  });
+  rotatorSlideEls[rotatorIndex].classList.add('active');
+  restartRotatorTimer();
+}
+function goToRotatorSlide(i){
+  if(rotatorSlideEls.length === 0) return;
+  const prevIndex = rotatorIndex;
+  const nextIndex = (i + rotatorSlideEls.length) % rotatorSlideEls.length;
+  if(nextIndex === prevIndex) return;
+  const prevEl = rotatorSlideEls[prevIndex], nextEl = rotatorSlideEls[nextIndex];
+  prevEl.classList.remove('active'); prevEl.classList.add('leaving');
+  setTimeout(() => prevEl.classList.remove('leaving'), 360);
+  nextEl.classList.add('active');
+  rotatorIndex = nextIndex;
+  document.querySelectorAll('#rotatorDots .rotator-dot').forEach((d,idx) => d.classList.toggle('active', idx===rotatorIndex));
+}
+function restartRotatorTimer(){
+  if(rotatorTimer) clearInterval(rotatorTimer);
+  if(rotatorSlideEls.length <= 1) return;
+  rotatorTimer = setInterval(() => goToRotatorSlide(rotatorIndex+1), headerRotateMs);
+}
+
+/* ---------- 初期化 ---------- */
+load();
+renderTop();
+</script>
+</body>
+</html>
