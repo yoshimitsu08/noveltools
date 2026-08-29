@@ -2433,7 +2433,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
   display:flex; align-items:center; justify-content:center;
 }
 .selector-card2.selected .selector-card2-toggle {
-  color:var(--bg);
+  color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,0.5);
 }
 .selector-card2-text {
   flex:1;
@@ -9370,7 +9371,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     cardEl.innerHTML = `
       <div class="selector-card2-row" style="display:flex; align-items:stretch; width:100%;">
-        <button type="button" class="selector-card2-toggle" title="タップで採用切替">${isSelected ? '✓' : s.label}</button>
+        <button type="button" class="selector-card2-toggle" title="タップで採用切替" style="${isSelected ? `background:${s.color};` : ''}">${isSelected ? '✓' : s.label}</button>
         <div class="selector-card2-text">${escapeHTML(card.text) || '<span class="selector-empty-text">（空のカード）</span>'}</div>
         <div class="selector-card2-side">
           ${isReorderMode
