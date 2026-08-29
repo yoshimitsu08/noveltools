@@ -2408,6 +2408,106 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .selector-gear-menu-delete-btn:hover { background:var(--danger); color:#fff; }
 
+/* 2026-08-29新設：新カードデザイン（採用トグル／文字列／歯車、歯車アコーディオンメニュー） */
+.selector-card2 {
+  display:flex;
+  align-items:stretch;
+  gap:0;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:var(--bg2);
+  overflow:hidden;
+}
+.selector-card2.selected { background:var(--bg3); }
+.selector-card2-toggle {
+  flex-shrink:0;
+  width:34px;
+  border:none;
+  border-right:1px solid var(--border);
+  background:none;
+  color:var(--text3);
+  font-family:var(--font-ui);
+  font-size:0.7rem;
+  font-weight:700;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.selector-card2.selected .selector-card2-toggle {
+  color:var(--bg);
+}
+.selector-card2-text {
+  flex:1;
+  min-width:0;
+  padding:10px 12px;
+  font-family:var(--font-body);
+  font-size:0.86rem;
+  line-height:1.7;
+  color:var(--text);
+}
+.selector-card2-side {
+  flex-shrink:0;
+  width:34px;
+  display:flex;
+  flex-direction:column;
+}
+.selector-card2-gear-btn, .selector-card2-drag-handle {
+  flex:1;
+  border:none;
+  border-left:1px solid var(--border);
+  background:none;
+  color:var(--text3);
+  font-size:0.8rem;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.selector-card2-drag-handle { cursor:grab; font-size:1rem; }
+.selector-card2.disabled-for-reorder .selector-card2-toggle,
+.selector-card2.disabled-for-reorder .selector-card2-gear-btn {
+  opacity:0.35;
+  pointer-events:none;
+}
+.selector-card2.dragging { opacity:0.4; }
+.selector-card2.drag-over { border-color:var(--accent) !important; box-shadow:0 0 0 2px var(--accent) !important; }
+
+.selector-card2-accordion {
+  border-top:1px solid var(--border);
+  background:var(--bg);
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.selector-card2-accordion-btn {
+  font-family:var(--font-ui);
+  font-size:0.68rem;
+  padding:9px 10px;
+  border-radius:4px;
+  border:1px solid var(--border);
+  background:var(--bg2);
+  color:var(--text);
+  cursor:pointer;
+  display:flex; align-items:center; gap:8px;
+  text-align:left;
+}
+.selector-card2-accordion-btn.danger { border-color:var(--danger); color:var(--danger); }
+.selector-card2-submenu {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding-left:14px;
+  border-left:2px solid var(--border);
+}
+.selector-reorder-banner {
+  font-family:var(--font-ui);
+  font-size:0.65rem;
+  color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 12%, transparent);
+  border:1px solid var(--accent);
+  border-radius:5px;
+  padding:8px 10px;
+  margin-bottom:10px;
+}
+
 /* 2026-08-20新設：系列選択ドロップダウン・削除ボタン・比較ボタンの並び（旧legendを差し替え） */
 .selector-legend {
   align-items:center;
@@ -3688,13 +3788,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
 <!-- ============ Sentence Selector View ============ -->
 <div class="view" id="selectorView">
-  <div class="editor-header">
+  <div class="editor-header" style="position:relative;">
     <button class="back-btn" id="selectorBackBtn">← 戻る</button>
     <div class="editor-header-title">
       <div class="et-work" id="selectorWorkTitle">—</div>
       <div class="et-label" id="selectorChapterLabel">Sentence Selector</div>
     </div>
+    <button class="hamburger-btn" id="selectorHamburgerBtn">☰</button>
     <button class="btn" id="selectorAddDraftBtn" style="flex-shrink:0; padding:8px 12px; font-size:0.65rem;">＋ドラフト</button>
+    <div class="dropdown-menu" id="selectorDropdown" style="top:52px; right:0;">
+      <button type="button" class="dropdown-item" id="selectorCompareBtn">⇕ 章を比較</button>
+      <button type="button" class="dropdown-item" id="selectorReorderModeBtn">↕ 並べ替えモード</button>
+    </div>
   </div>
 
   <div class="selector-legend" id="selectorLegend"></div>
@@ -6784,6 +6889,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(dmenu.classList.contains('active') && !dmenu.contains(e.target) && e.target.id !== 'detailHamburgerBtn'){
       dmenu.classList.remove('active');
     }
+    const selDropdown = document.getElementById('selectorDropdown');
+    if(selDropdown && selDropdown.classList.contains('active') && !selDropdown.contains(e.target) && e.target.id !== 'selectorHamburgerBtn'){
+      selDropdown.classList.remove('active');
+    }
     // 2026-08-28新設：ネタ帳一覧・編集画面のハンバーガーメニュー
     const ibListMenu = document.getElementById('ideaBookListDropdown');
     if(ibListMenu && ibListMenu.classList.contains('active') && !ibListMenu.contains(e.target) && e.target.id !== 'ideaBookListHamburgerBtn'){
@@ -8822,6 +8931,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let selectorCompareState = null;
   // ドラッグ&ドロップ並べ替え中のカードID（seriesCards内での並べ替え）
   let selectorDragCardId = null;
+  // 2026-08-29新設：並べ替えモード（画面全体のON/OFF状態）。ONの間だけドラッグハンドルが現れ、
+  // 採用トグル・歯車メニューは無効化される。章を開き直すたびfalseにリセットする。
+  let selectorReorderMode = false;
+  // 2026-08-29新設：どのカードの歯車メニューが開いているか（1つだけ開ける想定）
+  let selectorOpenGearCardId = null;
+  // 2026-08-29新設：開いている歯車メニューが「🔧」サブメニュー（上/下に追加・削除）まで展開されているか
+  let selectorGearSubmenuOpen = false;
 
   function getSelectorEntry(){
     const p = projects.find(x=>x.id===currentSelectorProjectId);
@@ -8835,6 +8951,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentSelectorChapterId = chapterId;
     selectorEditingCardId = null;
     selectorCompareState = null; // 章を開き直したら比較パネルは閉じる
+    selectorReorderMode = false; // 章を開き直したら並べ替えモードは解除
+    selectorOpenGearCardId = null;
+    selectorGearSubmenuOpen = false;
     pushAppNavState('selector'); // 2026-08-23新設：Androidバック/戻るボタンで本文へ戻れるよう履歴に積む
 
     const p = projects.find(x=>x.id===projectId);
@@ -8858,6 +8977,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
     appNavBack();
   };
 
+  // 2026-08-29新設：Sentence Selectorのハンバーガーメニュー（「章を比較」「並べ替えモード」）
+  document.getElementById('selectorHamburgerBtn').onclick = (e) => {
+    e.stopPropagation();
+    document.getElementById('selectorDropdown').classList.toggle('active');
+  };
+  document.getElementById('selectorCompareBtn').onclick = () => {
+    document.getElementById('selectorDropdown').classList.remove('active');
+    openSelectorCompare();
+  };
+  document.getElementById('selectorReorderModeBtn').onclick = () => {
+    document.getElementById('selectorDropdown').classList.remove('active');
+    selectorReorderMode = !selectorReorderMode;
+    selectorOpenGearCardId = null; // 並べ替えモードに入る/出るタイミングで開いていた歯車メニューは閉じる
+    selectorGearSubmenuOpen = false;
+    renderSelectorAll();
+  };
+
   function selectorColorOf(seriesId, selector){
     const s = selector.series.find(x=>x.id===seriesId);
     return s ? s.color : '#8fa8c8';
@@ -8865,6 +9001,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function selectorLabelOf(seriesId, selector){
     const s = selector.series.find(x=>x.id===seriesId);
     return s ? s.label : '?';
+  }
+
+  // 2026-08-29新設：並べ替えモード以外の操作（系列切替・採用切替・削除・＋ドラフト等）が行われたら
+  // 自動的に並べ替えモードを解除する。何も変化がなければ何もしない。
+  function exitReorderModeIfActive(){
+    if(!selectorReorderMode) return false;
+    selectorReorderMode = false;
+    selectorOpenGearCardId = null;
+    selectorGearSubmenuOpen = false;
+    return true;
   }
 
   function renderSelectorAll(){
@@ -8888,22 +9034,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
         </select>
         <button type="button" class="btn selector-active-toggle-btn${isViewingActive ? ' is-active' : ''}" id="selectorActiveToggleBtn" style="font-size:0.62rem; padding:6px 10px; flex-shrink:0;" title="このドラフトを本文に採用する">${isViewingActive ? '✓ 採用中' : '採用にする'}</button>
         <button type="button" class="selector-legend-delete-btn" id="selectorDeleteSeriesBtn" title="表示中のドラフトを全削除">🗑</button>
-        <button type="button" class="btn" id="selectorCompareBtn" style="font-size:0.62rem; padding:6px 10px;">⇕ 章を比較</button>
       `;
       document.getElementById('selectorSeriesSelect').onchange = (e) => {
+        exitReorderModeIfActive();
         selectorActiveSeriesId = e.target.value;
         selectorEditingCardId = null;
         renderSelectorAll();
       };
       document.getElementById('selectorActiveToggleBtn').onclick = () => {
+        exitReorderModeIfActive();
         toggleSeriesActive(selectorActiveSeriesId);
       };
       document.getElementById('selectorDeleteSeriesBtn').onclick = () => {
+        exitReorderModeIfActive();
         const s = selector.series.find(x=>x.id===selectorActiveSeriesId);
         if(s) deleteSelectorDraft(s.id, s.label);
-      };
-      document.getElementById('selectorCompareBtn').onclick = () => {
-        openSelectorCompare();
       };
     }
 
@@ -8985,13 +9130,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     wrap.innerHTML = '';
 
-    const addBtnTop = document.createElement('button');
-    addBtnTop.type = 'button';
-    addBtnTop.className = 'selector-insert-btn';
-    addBtnTop.style.marginBottom = '8px';
-    addBtnTop.innerHTML = '<span class="selector-gear-menu-arrow">⇧</span>+ 先頭に追加';
-    addBtnTop.onclick = () => createSelectorCardAt(s.id, 0);
-    wrap.appendChild(addBtnTop);
+    if(selectorReorderMode){
+      const banner = document.createElement('div');
+      banner.className = 'selector-reorder-banner';
+      banner.textContent = '↕ 並べ替えモード中：ハンドルをドラッグして順序を変更できます（解除は☰メニューから）';
+      wrap.appendChild(banner);
+    }
 
     if(cards.length === 0){
       const emptyEl = document.createElement('div');
@@ -9000,7 +9144,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <span class="selector-card-badge" style="background:${s.color}; opacity:0.6; width:24px; height:24px;">${s.label}</span>
         <span class="selector-empty-text">タップで文を追加</span>
       `;
-      emptyEl.onclick = () => createSelectorCardAt(s.id, 0);
+      emptyEl.onclick = () => { if(!selectorReorderMode) createSelectorCardAt(s.id, 0); };
       wrap.appendChild(emptyEl);
       return;
     }
@@ -9011,14 +9155,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
       listWrap.appendChild(renderSelectorCardEl(s, card, cardIdx, selector));
     });
     wrap.appendChild(listWrap);
-
-    const addBtnBottom = document.createElement('button');
-    addBtnBottom.type = 'button';
-    addBtnBottom.className = 'selector-insert-btn';
-    addBtnBottom.style.marginTop = '10px';
-    addBtnBottom.innerHTML = '<span class="selector-gear-menu-arrow">⇩</span>+ 末尾に追加';
-    addBtnBottom.onclick = () => createSelectorCardAt(s.id, cards.length);
-    wrap.appendChild(addBtnBottom);
   }
 
   function bindLongPress(el, onLongPress, delay){
@@ -9104,6 +9240,36 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // 2026-08-20 全面刷新：STAY/PUSHメニューを廃止し、ハンドル（≡）のドラッグ&ドロップで
   // 選択中系列内のカード順序を並べ替える方式に変更。歯車メニューは削除のみに簡略化。
+  // 2026-08-29新設：カードの文字列をクリップボードの内容で上書きする（ペースト）。
+  // 100文字以上の上書きは確認ダイアログを挟む。
+  async function pasteOverwriteSelectorCard(seriesId, cardId){
+    let clipText = '';
+    try {
+      clipText = await navigator.clipboard.readText();
+    } catch(_e){
+      alert('クリップボードを読み取れませんでした。ブラウザの権限設定をご確認ください。');
+      return;
+    }
+    if(!clipText){ alert('クリップボードが空です。'); return; }
+    if(clipText.length >= 100){
+      if(!confirm(`クリップボードの内容（${clipText.length}文字）でこのカードの文章を上書きします。元の文章には戻せません。よろしいですか？`)) return;
+    }
+    const entry = getSelectorEntry();
+    const selector = ensureSelector(entry);
+    const arr = selector.seriesCards[seriesId];
+    if(arr){
+      selector.seriesCards[seriesId] = arr.map(c => c.id === cardId ? { ...c, text: clipText } : c);
+    }
+    markCardAsLastEdited(entry, cardId);
+    selectorOpenGearCardId = null;
+    selectorGearSubmenuOpen = false;
+    afterSelectorMutate();
+  }
+
+  // 2026-08-29 全面刷新：カードデザインを「左＝採用トグル／中央＝文字列（タップ無反応）／右＝歯車」に変更。
+  // 長押し編集・常時表示ドラッグハンドルは廃止。歯車タップでアコーディオンメニュー（編集/コピー/ペースト/🔧）を開く。
+  // 並べ替えモード（selectorReorderMode）中は右側が歯車からドラッグハンドルに切り替わり、
+  // 採用トグル・歯車は無効化される。
   function renderSelectorCardEl(s, card, cardIdx, selector){
     const wrapper = document.createElement('div');
     wrapper.style.position = 'relative';
@@ -9111,13 +9277,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const entry = getSelectorEntry();
     const isBookmarked = entry && entry.lastEditedCardId === card.id;
-    const bookmarkStyle = isBookmarked
-      ? `border-color:${bookmarkBorderColor} !important; background:${bookmarkFillColor} !important; box-shadow:0 0 0 1px ${bookmarkBorderColor} !important;`
-      : '';
 
+    // ---- 編集モード（歯車→「編集」で入る。中身は既存のテキストエリア編集を踏襲） ----
     if(selectorEditingCardId === card.id){
       wrapper.innerHTML = `
-        <div class="selector-card" style="border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); ${bookmarkStyle}">
+        <div class="selector-card" style="border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);">
           <div class="selector-card-left-col">
             <div style="width:26px; height:26px;"></div>
             <div class="selector-card-badge" style="background:${s.color}">${s.label}</div>
@@ -9140,16 +9304,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
           ta.oninput = () => { selectorEditingDraft = ta.value; };
           enableAutoResize(ta);
 
-          // 編集対象を画面上端付近の絶対位置へスクロール（オフセット値はユーザー設定可能、既定90px）。
-          // スマホのソフトウェアキーボード出現に伴うレイアウト変化を吸収するための処理のため、
-          // PC（非タッチ環境）ではキーボードが出ないので不要かつ余計な動きになるためスキップする。
           const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
           if(isTouchDevice){
-            // ソフトウェアキーボードが開くとビューポート高さ・スクロール可能範囲が変わるため、
-            // focus()でキーボードが開き終わったタイミング（visualViewportのresize、無ければ遅延）で計算する。
-            // resize発火はキーボードのアニメーション途中で起きることがあり、その瞬間に計算すると
-            // 毎回微妙に違う位置になる（狙いどころがブレる）ため、発火後さらに少し待ってレイアウトが
-            // 落ち着いてから計算する。
             const SETTLE_DELAY_MS = 150;
             const scrollToOffset = () => {
               const rect = ta.closest('[data-card-id]').getBoundingClientRect();
@@ -9157,7 +9313,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
               const elTop = rect.top + currentScrollY;
               window.scrollTo({ top: elTop - selectorScrollOffset, behavior: 'smooth' });
             };
-
             if(window.visualViewport){
               let done = false;
               const onViewportResize = () => {
@@ -9167,14 +9322,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
                 setTimeout(scrollToOffset, SETTLE_DELAY_MS);
               };
               window.visualViewport.addEventListener('resize', onViewportResize);
-              // キーボードが既に開いている等、resizeが発火しないケースへのフォールバック
               setTimeout(onViewportResize, 400);
             } else {
-              // visualViewport非対応ブラウザ向けフォールバック
               setTimeout(scrollToOffset, 300 + SETTLE_DELAY_MS);
             }
           }
-
           ta.focus();
         }
       }, 0);
@@ -9192,161 +9344,226 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
 
     const isSelected = !!card.selected;
+    const isReorderMode = selectorReorderMode;
+    const isGearOpen = selectorOpenGearCardId === card.id;
 
     const cardEl = document.createElement('div');
-    cardEl.className = 'selector-card' + (isSelected ? ' selected' : '');
-    cardEl.draggable = true;
+    cardEl.className = 'selector-card2' + (isSelected ? ' selected' : '') + (isReorderMode ? ' disabled-for-reorder' : '');
     if(isBookmarked){
       cardEl.style.borderColor = bookmarkBorderColor;
-      cardEl.style.background = bookmarkFillColor;
       cardEl.style.boxShadow = `0 0 0 1px ${bookmarkBorderColor}`;
-    } else {
-      cardEl.style.borderColor = isSelected ? s.color : 'var(--border)';
-      cardEl.style.boxShadow = isSelected ? `0 0 0 1px ${s.color}` : 'none';
     }
+    cardEl.draggable = isReorderMode;
+
     cardEl.innerHTML = `
-      <div class="selector-card-left-col">
-        <div class="selector-drag-handle" title="ドラッグして並べ替え">≡</div>
-        <div class="selector-card-badge${isSelected ? '' : ' unselected'}" style="background:${isSelected ? s.color : ''}" title="タップで採用切替">${s.label}</div>
-        <button type="button" class="selector-gear-btn" title="このカードを削除">🗑</button>
-      </div>
-      <div class="selector-card-text-wrap-outer">
-        <div class="selector-card-text-wrap"${isBookmarked ? ` style="background:transparent;"` : ''}>
-          ${isSelected ? `<div class="selector-card-tag" style="color:${s.color}">✓ 採用中</div>` : ''}
-          ${isBookmarked ? `<div class="selector-card-tag" style="color:${bookmarkBorderColor};">🔖 前回ここまで</div>` : ''}
-          <div class="selector-card-text">${escapeHTML(card.text)}</div>
+      <div class="selector-card2-row" style="display:flex; align-items:stretch; width:100%;">
+        <button type="button" class="selector-card2-toggle" title="タップで採用切替">${isSelected ? '✓' : s.label}</button>
+        <div class="selector-card2-text">${escapeHTML(card.text) || '<span class="selector-empty-text">（空のカード）</span>'}</div>
+        <div class="selector-card2-side">
+          ${isReorderMode
+            ? `<div class="selector-card2-drag-handle" title="ドラッグして並べ替え">≡</div>`
+            : `<button type="button" class="selector-card2-gear-btn" title="メニュー">⚙</button>`
+          }
         </div>
       </div>
+      ${isGearOpen ? renderSelectorGearAccordionHtml(s, card) : ''}
     `;
 
-    // バッジタップ = 採用トグル
-    cardEl.querySelector('.selector-card-badge').onclick = (e) => {
+    // 採用トグル
+    const toggleBtn = cardEl.querySelector('.selector-card2-toggle');
+    toggleBtn.onclick = (e) => {
       e.stopPropagation();
+      if(isReorderMode) return;
       toggleSelectorCard(card.id);
     };
 
-    // 歯車 = カード削除（STAY/PUSHメニューは廃止）
-    cardEl.querySelector('.selector-gear-btn').onclick = (e) => {
-      e.stopPropagation();
-      deleteSelectorCard(s.id, card.id);
-    };
-
-    // テキスト領域 = 長押しのみで編集（タップは何もしない、範囲選択・コピーは編集モードのtextarea上で行う）
-    const textWrapOuter = cardEl.querySelector('.selector-card-text-wrap-outer');
-
-    let longPressTimer = null;
-    let pressStartX = null;
-    let pressStartY = null;
-    const MOVE_CANCEL_THRESHOLD = 10; // これ以上動いたら長押し判定をキャンセル（範囲選択・スクロールと区別するため）
-
-    function getClientXY(e){
-      if(e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      return { x: e.clientX, y: e.clientY };
-    }
-
-    function startPress(e){
-      const pos = getClientXY(e);
-      pressStartX = pos.x;
-      pressStartY = pos.y;
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        selectorEditingCardId = card.id;
-        selectorEditingDraft = card.text;
+    // 歯車（通常モードのみ表示）
+    const gearBtn = cardEl.querySelector('.selector-card2-gear-btn');
+    if(gearBtn){
+      gearBtn.onclick = (e) => {
+        e.stopPropagation();
+        if(selectorOpenGearCardId === card.id){
+          selectorOpenGearCardId = null;
+          selectorGearSubmenuOpen = false;
+        } else {
+          selectorOpenGearCardId = card.id;
+          selectorGearSubmenuOpen = false;
+        }
         renderSelectorRows();
-      }, longPressMs);
-    }
-    function movePress(e){
-      if(!longPressTimer || pressStartX === null) return;
-      const pos = getClientXY(e);
-      const dx = Math.abs(pos.x - pressStartX);
-      const dy = Math.abs(pos.y - pressStartY);
-      if(dx > MOVE_CANCEL_THRESHOLD || dy > MOVE_CANCEL_THRESHOLD){
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-    }
-    function endPress(){
-      if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
-      pressStartX = null;
-      pressStartY = null;
+      };
     }
 
-    textWrapOuter.addEventListener('mousedown', startPress);
-    textWrapOuter.addEventListener('mousemove', movePress);
-    textWrapOuter.addEventListener('mouseup', endPress);
-    textWrapOuter.addEventListener('mouseleave', endPress);
-    textWrapOuter.addEventListener('touchstart', startPress, { passive: true });
-    textWrapOuter.addEventListener('touchmove', movePress, { passive: true });
-    textWrapOuter.addEventListener('touchend', endPress);
+    // アコーディオン内ボタンのバインド
+    if(isGearOpen){
+      bindSelectorGearAccordionEvents(cardEl, s, card);
+    }
 
-    // ---- ドラッグ&ドロップによる並べ替え（ハンドル≡から開始） ----
-    const handle = cardEl.querySelector('.selector-drag-handle');
+    // ---- 並べ替えモード時のみ有効：ドラッグ&ドロップ ----
+    if(isReorderMode){
+      const handle = cardEl.querySelector('.selector-card2-drag-handle');
 
-    cardEl.addEventListener('dragstart', (e) => {
-      // ハンドル以外からの誤発火を防ぐ（PC・マウス操作時）
-      if(!e.target.closest('.selector-drag-handle')){ e.preventDefault(); return; }
-      selectorDragCardId = card.id;
-      cardEl.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', card.id); } catch(_e){ /* ignore */ }
-    });
-    cardEl.addEventListener('dragend', () => {
-      cardEl.classList.remove('dragging');
-      selectorDragCardId = null;
-      document.querySelectorAll('.selector-card.drag-over').forEach(el => el.classList.remove('drag-over'));
-    });
-    cardEl.addEventListener('dragover', (e) => {
-      if(!selectorDragCardId || selectorDragCardId === card.id) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      cardEl.classList.add('drag-over');
-    });
-    cardEl.addEventListener('dragleave', () => {
-      cardEl.classList.remove('drag-over');
-    });
-    cardEl.addEventListener('drop', (e) => {
-      e.preventDefault();
-      cardEl.classList.remove('drag-over');
-      if(!selectorDragCardId || selectorDragCardId === card.id) return;
-      reorderSelectorCard(s.id, selectorDragCardId, card.id);
-    });
+      cardEl.addEventListener('dragstart', (e) => {
+        if(!e.target.closest('.selector-card2-drag-handle')){ e.preventDefault(); return; }
+        selectorDragCardId = card.id;
+        cardEl.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', card.id); } catch(_e){ /* ignore */ }
+      });
+      cardEl.addEventListener('dragend', () => {
+        cardEl.classList.remove('dragging');
+        selectorDragCardId = null;
+        document.querySelectorAll('.selector-card2.drag-over').forEach(el => el.classList.remove('drag-over'));
+      });
+      cardEl.addEventListener('dragover', (e) => {
+        if(!selectorDragCardId || selectorDragCardId === card.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        cardEl.classList.add('drag-over');
+      });
+      cardEl.addEventListener('dragleave', () => {
+        cardEl.classList.remove('drag-over');
+      });
+      cardEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cardEl.classList.remove('drag-over');
+        if(!selectorDragCardId || selectorDragCardId === card.id) return;
+        reorderSelectorCard(s.id, selectorDragCardId, card.id);
+      });
 
-    // タッチデバイス向け：ハンドルのtouchstart/touchmove/touchendでもドラッグ相当の並べ替えを実現
-    let touchDragging = false;
-    handle.addEventListener('touchstart', (e) => {
-      selectorDragCardId = card.id;
-      touchDragging = true;
-      cardEl.classList.add('dragging');
-      e.preventDefault();
-    }, { passive: false });
-    handle.addEventListener('touchmove', (e) => {
-      if(!touchDragging) return;
-      e.preventDefault(); // ページスクロールを止め、指の動きにカードを追従させる
-      const touch = e.touches[0];
-      const target = document.elementFromPoint(touch.clientX, touch.clientY);
-      const overCard = target && target.closest('.selector-card');
-      document.querySelectorAll('.selector-card.drag-over').forEach(el => el.classList.remove('drag-over'));
-      if(overCard && overCard !== cardEl){
-        overCard.classList.add('drag-over');
-      }
-    }, { passive: false });
-    handle.addEventListener('touchend', (e) => {
-      if(!touchDragging) return;
-      touchDragging = false;
-      cardEl.classList.remove('dragging');
-      const touch = e.changedTouches[0];
-      const target = document.elementFromPoint(touch.clientX, touch.clientY);
-      const overCard = target && target.closest('.selector-card');
-      document.querySelectorAll('.selector-card.drag-over').forEach(el => el.classList.remove('drag-over'));
-      if(overCard && overCard.dataset.cardId && overCard.dataset.cardId !== card.id){
-        reorderSelectorCard(s.id, card.id, overCard.dataset.cardId);
-      }
-      selectorDragCardId = null;
-    });
+      let touchDragging = false;
+      handle.addEventListener('touchstart', (e) => {
+        selectorDragCardId = card.id;
+        touchDragging = true;
+        cardEl.classList.add('dragging');
+        e.preventDefault();
+      }, { passive: false });
+      handle.addEventListener('touchmove', (e) => {
+        if(!touchDragging) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        const overCard = target && target.closest('.selector-card2');
+        document.querySelectorAll('.selector-card2.drag-over').forEach(el => el.classList.remove('drag-over'));
+        if(overCard && overCard !== cardEl){
+          overCard.classList.add('drag-over');
+        }
+      }, { passive: false });
+      handle.addEventListener('touchend', (e) => {
+        if(!touchDragging) return;
+        touchDragging = false;
+        cardEl.classList.remove('dragging');
+        const touch = e.changedTouches[0];
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        const overCard = target && target.closest('.selector-card2');
+        document.querySelectorAll('.selector-card2.drag-over').forEach(el => el.classList.remove('drag-over'));
+        if(overCard && overCard.dataset.cardId && overCard.dataset.cardId !== card.id){
+          reorderSelectorCard(s.id, card.id, overCard.dataset.cardId);
+        }
+        selectorDragCardId = null;
+      });
+    }
 
     wrapper.appendChild(cardEl);
     return wrapper;
   }
+
+  // 歯車アコーディオンの中身HTML（編集/コピー/ペースト/🔧、🔧展開時はさらに上/下追加・削除）
+  function renderSelectorGearAccordionHtml(s, card){
+    if(selectorGearSubmenuOpen){
+      return `
+        <div class="selector-card2-accordion">
+          <div class="selector-card2-submenu">
+            <button type="button" class="selector-card2-accordion-btn" data-action="add-above">⬆ このカードの上に追加</button>
+            <button type="button" class="selector-card2-accordion-btn" data-action="add-below">⬇ このカードの下に追加</button>
+            <button type="button" class="selector-card2-accordion-btn danger" data-action="delete">🗑 このカードを削除</button>
+          </div>
+          <button type="button" class="selector-card2-accordion-btn" data-action="submenu-back">← 戻る</button>
+        </div>
+      `;
+    }
+    return `
+      <div class="selector-card2-accordion">
+        <button type="button" class="selector-card2-accordion-btn" data-action="edit">✎ 編集</button>
+        <button type="button" class="selector-card2-accordion-btn" data-action="copy">📋 コピー</button>
+        <button type="button" class="selector-card2-accordion-btn" data-action="paste">📥 ペースト（上書き）</button>
+        <button type="button" class="selector-card2-accordion-btn" data-action="submenu-open">🔧 カード操作</button>
+      </div>
+    `;
+  }
+
+  // 歯車アコーディオン内の各ボタンにイベントを紐付け
+  function bindSelectorGearAccordionEvents(cardEl, s, card){
+    const accordion = cardEl.querySelector('.selector-card2-accordion');
+    if(!accordion) return;
+
+    const btn = (action) => accordion.querySelector(`[data-action="${action}"]`);
+
+    if(btn('edit')){
+      btn('edit').onclick = (e) => {
+        e.stopPropagation();
+        selectorEditingCardId = card.id;
+        selectorEditingDraft = card.text;
+        selectorOpenGearCardId = null;
+        selectorGearSubmenuOpen = false;
+        renderSelectorRows();
+      };
+    }
+    if(btn('copy')){
+      btn('copy').onclick = async (e) => {
+        e.stopPropagation();
+        await copyTextWithToast(card.text);
+      };
+    }
+    if(btn('paste')){
+      btn('paste').onclick = async (e) => {
+        e.stopPropagation();
+        await pasteOverwriteSelectorCard(s.id, card.id);
+      };
+    }
+    if(btn('submenu-open')){
+      btn('submenu-open').onclick = (e) => {
+        e.stopPropagation();
+        selectorGearSubmenuOpen = true;
+        renderSelectorRows();
+      };
+    }
+    if(btn('submenu-back')){
+      btn('submenu-back').onclick = (e) => {
+        e.stopPropagation();
+        selectorGearSubmenuOpen = false;
+        renderSelectorRows();
+      };
+    }
+    if(btn('add-above')){
+      btn('add-above').onclick = (e) => {
+        e.stopPropagation();
+        const arr = ensureSelector(getSelectorEntry()).seriesCards[s.id] || [];
+        const idx = arr.findIndex(c => c.id === card.id);
+        selectorOpenGearCardId = null;
+        selectorGearSubmenuOpen = false;
+        createSelectorCardAt(s.id, idx === -1 ? 0 : idx);
+      };
+    }
+    if(btn('add-below')){
+      btn('add-below').onclick = (e) => {
+        e.stopPropagation();
+        const arr = ensureSelector(getSelectorEntry()).seriesCards[s.id] || [];
+        const idx = arr.findIndex(c => c.id === card.id);
+        selectorOpenGearCardId = null;
+        selectorGearSubmenuOpen = false;
+        createSelectorCardAt(s.id, idx === -1 ? arr.length : idx + 1);
+      };
+    }
+    if(btn('delete')){
+      btn('delete').onclick = (e) => {
+        e.stopPropagation();
+        selectorOpenGearCardId = null;
+        selectorGearSubmenuOpen = false;
+        deleteSelectorCard(s.id, card.id);
+      };
+    }
+  }
+
 
   // カードdraggedCardIdを、カードtargetCardIdの位置へ移動する（同一系列内の並べ替え）
   function reorderSelectorCard(seriesId, draggedCardId, targetCardId){
@@ -9579,6 +9796,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // ---- Add draft modal ----
   document.getElementById('selectorAddDraftBtn').onclick = () => {
+    exitReorderModeIfActive();
     document.getElementById('addDraftNameInput').value = '';
     document.getElementById('addDraftTextarea').value = '';
     document.getElementById('addDraftModalOverlay').classList.add('active');
