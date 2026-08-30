@@ -4101,9 +4101,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(res.status === 404) return null;
     if(!res.ok) throw new Error(`GitHub取得エラー（${res.status}）`);
     const json = await res.json();
-    const contentB64 = json.content.replace(/\n/g, '');
-    const decodedJsonStr = decodeURIComponent(escape(atob(contentB64)));
-    const encryptedPayload = JSON.parse(decodedJsonStr);
+    const encryptedPayload = await ghFetchEncryptedPayload(cfg, filename, json);
     const plainJsonStr = await ghDecrypt(encryptedPayload, cfg.passphrase);
     const payload = JSON.parse(plainJsonStr);
     return { sha: json.sha, payload, filename };
@@ -4300,13 +4298,38 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // 指定ファイル名の同期ファイルを取得・復号する（IDによる検索を経由しない、ファイル名直指定版）。
   // 戻り値: { sha, payload } | throws
+  // 2026-08-30新設：GitHub Contents API（通常のGET）は、ファイルが1MBを超えると
+  // content フィールドが空（encoding:"none"）で返ってくる制限がある。
+  // その場合のみ、raw取得（Accept: application/vnd.github.v3.raw）で中身だけを取り直す。
+  // 通常GET経由のcontentは「保存時にPUTした文字列（暗号化ペイロードのJSON文字列）をさらにBase64化したもの」だが、
+  // raw取得の場合はGitHubに保存されている生の中身（＝暗号化ペイロードのJSON文字列そのもの）が
+  // 直接返ってくるため、Base64デコードを挟まない（挟むと壊れる）。
+  // 戻り値は「復号前の暗号化ペイロードオブジェクト（{v, salt, iv, data}）」に統一する。
+  async function ghFetchEncryptedPayload(cfg, filename, json){
+    if(json.encoding === 'base64' && json.content){
+      const contentB64 = json.content.replace(/\n/g, '');
+      const decodedJsonStr = decodeURIComponent(escape(atob(contentB64)));
+      return JSON.parse(decodedJsonStr);
+    }
+    // 1MB超（encoding:"none"、contentが空）のケース：rawで中身だけ再取得する
+    const res = await fetch(ghApiUrl(cfg, filename), {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${cfg.pat}`,
+        'Accept': 'application/vnd.github.v3.raw'
+      }
+    });
+    if(!res.ok) throw new Error(`GitHub取得エラー（raw, ${res.status}）`);
+    const rawText = await res.text();
+    return JSON.parse(rawText);
+  }
+
   async function ghFetchRemoteByFilename(cfg, filename){
     const res = await ghApiRequest(cfg, filename, 'GET');
     if(!res.ok) throw new Error(`GitHub取得エラー（${res.status}）`);
     const json = await res.json();
-    const contentB64 = json.content.replace(/\n/g, '');
-    const decodedJsonStr = decodeURIComponent(escape(atob(contentB64)));
-    const encryptedPayload = JSON.parse(decodedJsonStr);
+    const encryptedPayload = await ghFetchEncryptedPayload(cfg, filename, json);
     const plainJsonStr = await ghDecrypt(encryptedPayload, cfg.passphrase);
     const payload = JSON.parse(plainJsonStr);
     return { sha: json.sha, payload };
