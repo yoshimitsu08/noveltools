@@ -3935,6 +3935,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
   'use strict';
 
   const STORAGE_KEY = 'manuscript_projects_v1';
+  // 2026-08-30新設：ピン留め状態は「作品が持つ属性」ではなく「今どの作品がピン留め中か」という
+  // アプリ全体で1つだけの状態のため、作品データ（projects配列）とは切り離し、
+  // 独立したストレージキーで管理する（端末ローカルの一時的な目印。GitHub同期・エクスポート対象外）。
+  const PINNED_PROJECT_STORAGE_KEY = 'manuscript_pinned_project_v1';
+  let pinnedProjectId = null;
 
   // ================= GitHub Sync (2026-08-23新設) =================
   // 設計概要：
@@ -4333,8 +4338,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     id: '__ideabook__',
     isIdeaBook: true,
     title: 'ネタ帳',
-    cover: IDEA_BOOK_COVER_DATAURL,
-    pinned: false
+    cover: IDEA_BOOK_COVER_DATAURL
   };
   // 2026-08-28削除：IDEA_NOTES_STORAGE_KEY / IDEA_SEEDS_STORAGE_KEY（旧グローバル単一データ方式）は
   // ネタ帳ごとに個別のideaSeedsを持つ方式（p.ideaSeeds）へ移行したため不要。
@@ -4346,8 +4350,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     id: '__helpguide__',
     isHelpGuide: true,
     title: '使い方ガイド',
-    cover: HELP_COVER_DATAURL,
-    pinned: false
+    cover: HELP_COVER_DATAURL
   };
 
   let projects = [];
@@ -4698,6 +4701,19 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const raw = localStorage.getItem(STORAGE_KEY);
       projects = raw ? JSON.parse(raw) : [];
     } catch(_e){ projects = []; }
+    // 2026-08-30新設：ピン留め状態の読み込み。
+    try {
+      pinnedProjectId = localStorage.getItem(PINNED_PROJECT_STORAGE_KEY) || null;
+    } catch(_e){ pinnedProjectId = null; }
+    // 移行措置：旧方式（各作品が p.pinned:true を個別に持つ）のデータが残っている場合、
+    // 1回だけ拾い上げて新方式（pinnedProjectId）に変換する。以後 p.pinned は読み書きしない。
+    if(pinnedProjectId === null){
+      const legacyPinned = projects.find(p => p.pinned);
+      if(legacyPinned){
+        pinnedProjectId = legacyPinned.id;
+        try { localStorage.setItem(PINNED_PROJECT_STORAGE_KEY, pinnedProjectId); } catch(_e){}
+      }
+    }
     // migration: ensure sections exist on older records
     // 2026-08-28修正：kind==='ideabook'（ネタ帳）は通常作品専用フィールド（sections/plotChapters/manuscript等）
     // を持たないため、このマイグレーション処理の対象外にする。ネタ帳側の最小限の後方互換補完は別途行う。
@@ -4777,6 +4793,16 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
     catch(_e){ alert('保存に失敗しました。ブラウザのストレージ容量を確認してください。'); }
     updateStorageUsageDisplay();
+  }
+  // 2026-08-30新設：ピン留め状態の保存。作品データ（save()）とは独立して呼ぶ。
+  function savePinnedProject(){
+    try {
+      if(pinnedProjectId){
+        localStorage.setItem(PINNED_PROJECT_STORAGE_KEY, pinnedProjectId);
+      } else {
+        localStorage.removeItem(PINNED_PROJECT_STORAGE_KEY);
+      }
+    } catch(_e){}
   }
   function uid(){ return 'p' + Date.now() + Math.random().toString(36).slice(2,8); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -5012,7 +5038,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const imported = JSON.parse(JSON.stringify(p));
       imported.id = uid();
       imported.title = (imported.title || '無題') + '（インポート）';
-      imported.pinned = false;
+      delete imported.pinned; // 旧方式の残骸。新IDを振るため pinnedProjectId と一致することはなく自然に非ピン留め扱いになる
       imported.createdAt = Date.now();
       imported.updatedAt = Date.now();
       if(!imported.sections) imported.sections = defaultSections();
@@ -5125,7 +5151,6 @@ h1 .mark { color:var(--accent); font-style:italic; }
       deadlines: [],
       todos: [],
       memo: '',
-      pinned: false,
       sections: defaultSections(),
       plotChapters: [],
       manuscript: {}, // chapterId -> { status, selector: { series:[], rows:[] } }
@@ -5264,8 +5289,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
       : `<div class="no-cover"><span class="glyph">✒</span>NO COVER</div>`;
 
     const isSelected = selectMode && selectedIds.has(p.id);
+    const isPinned = p.id === pinnedProjectId;
     const cardClasses = ['card'];
-    if(p.pinned) cardClasses.push('pinned');
+    if(isPinned) cardClasses.push('pinned');
     if(selectMode) cardClasses.push('select-mode');
     if(isSelected) cardClasses.push('selected');
 
@@ -5273,7 +5299,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     <div class="${cardClasses.join(' ')}" data-id="${p.id}">
       <div class="card-cover">
         <input type="checkbox" class="card-select-check" ${isSelected?'checked':''} tabindex="-1">
-        ${p.pinned ? '<div class="pin-badge">PIN</div>' : ''}
+        ${isPinned ? '<div class="pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="editor-badge">${escapeHTML(p.editor)}</div>` : ''}
         ${coverHTML}
       </div>
@@ -5324,8 +5350,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const total = chapterTotal(p);
     const done = chapterDoneCount(p);
 
+    const isPinned = p.id === pinnedProjectId;
     const cardClasses = ['reel-card'];
-    if(p.pinned) cardClasses.push('pinned');
+    if(isPinned) cardClasses.push('pinned');
     if(selectMode) cardClasses.push('select-mode');
     if(selectMode && isChecked) cardClasses.push('rc-checked');
     // 2026-08-27新設：起動時GitHub SHA照合で「差分あり」と判定された作品に赤バッジを出す
@@ -5337,7 +5364,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return `
     <div class="${cardClasses.join(' ')}" data-id="${p.id}">
       <div class="rc-cover" data-role="cover" data-phase-label="${escapeHTML(phaseLabel(p))}">
-        ${p.pinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
+        ${isPinned ? '<div class="rc-pin-badge">PIN</div>' : ''}
         ${p.editor ? `<div class="rc-editor-badge">${escapeHTML(p.editor)}</div>` : ''}
         <div class="rc-gh-badge-stack">
           <div class="rc-gh-diff-badge">⚠ 更新あり</div>
@@ -5512,7 +5539,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     // ネタ帳自体はreel末尾のIDEA_BOOK_PSEUDO_CARD（疑似カード）経由でのみアクセスする。
     const arr = projects.filter(p => projectKind(p) === 'novel');
     if(mode === 'pinned'){
-      arr.sort((a,b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
+      arr.sort((a,b) => ((b.id === pinnedProjectId) - (a.id === pinnedProjectId)) || (b.updatedAt - a.updatedAt));
     } else if(mode === 'updated'){
       arr.sort((a,b) => b.updatedAt - a.updatedAt);
     } else if(mode === 'title'){
@@ -5712,7 +5739,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       // classNameを丸ごと入れ替えると位置制御用のクラス（active/snapping等）が消えるため、
       // reel-card系の見た目クラスだけ引き継ぎ、構造クラス（selected等の状態）は再計算に任せる。
       card.innerHTML = newCardEl.innerHTML;
-      if(p.pinned) card.classList.add('pinned'); else card.classList.remove('pinned');
+      card.classList.toggle('pinned', p.id === pinnedProjectId);
       card.classList.toggle('select-mode', selectMode);
       card.classList.toggle('rc-checked', selectMode && isChecked);
       // 2026-08-28修正：GitHub関連の2バッジ（差分あり／未保存）は外側divのクラスで
@@ -6065,7 +6092,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   function renderPriorityBanner(){
     const banner = document.getElementById('priorityBanner');
-    const pinned = projects.find(p => p.pinned);
+    const pinned = pinnedProjectId ? projects.find(p => p.id === pinnedProjectId) : null;
     if(pinned){
       banner.classList.add('active');
       document.getElementById('pinTitle').textContent = pinned.title || '無題';
@@ -6084,7 +6111,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function setupHeaderRotator(){
     const allSlides = Array.from(document.querySelectorAll('#headerRotator .rotator-slide'));
     // ピン留めが無い時は「pin」スライドを候補から外す
-    const hasPinned = projects.some(p => p.pinned);
+    const hasPinned = pinnedProjectId !== null;
     rotatorSlideEls = allSlides.filter(el => el.dataset.slide !== 'pin' || hasPinned);
 
     if(rotatorIndex >= rotatorSlideEls.length) rotatorIndex = 0;
@@ -6693,9 +6720,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('detailTitle').textContent = p.title || '無題';
     updateAuthorDisplay(p);
     document.getElementById('detailProjectIdText').textContent = p.id;
-    document.getElementById('pinToggleBtn').textContent = p.pinned ? '📌 優先を解除' : '📌 優先に設定';
-    document.getElementById('pinToggleBtn').classList.toggle('active', p.pinned);
-    if(p.pinned){
+    const pIsPinned = p.id === pinnedProjectId;
+    document.getElementById('pinToggleBtn').textContent = pIsPinned ? '📌 優先を解除' : '📌 優先に設定';
+    document.getElementById('pinToggleBtn').classList.toggle('active', pIsPinned);
+    if(pIsPinned){
       document.getElementById('pinToggleBtn').style.background = 'var(--accent)';
       document.getElementById('pinToggleBtn').style.color = 'var(--bg)';
     } else {
@@ -8001,11 +8029,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   document.getElementById('pinToggleBtn').onclick = () => {
     const p = projects.find(x=>x.id===currentDetailId);
-    const willPin = !p.pinned;
-    if(willPin) projects.forEach(x => x.pinned = false);
-    p.pinned = willPin;
-    p.updatedAt = Date.now();
-    save();
+    // 2026-08-30修正：ピン留めは「今どの作品がピン留め中か」というアプリ全体で1つだけの状態。
+    // 以前は各作品にp.pinnedを個別に持たせ、コード側で排他制御（他を全解除）していたが、
+    // グローバルな1値（pinnedProjectId）で管理する方式に変更し、構造上「複数同時ピン留め」が
+    // 起こり得ないようにした。ピン留めは端末ローカルの一時的な目印のため、作品データ側の
+    // updatedAt（GitHub同期・更新順ソートに影響）は更新しない。
+    pinnedProjectId = (pinnedProjectId === p.id) ? null : p.id;
+    savePinnedProject();
     // 2026-08-26：detailモーダルを開いたまま中身だけ再描画するケースのため履歴操作は不要（明示化）
     openDetail(p.id, null, /*skipHistoryPush=*/true);
   };
