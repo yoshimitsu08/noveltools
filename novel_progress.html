@@ -3050,11 +3050,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
     </div>
     <div class="modal-body">
       <div class="chapter-note">
-        GitHub上に保存されている作品の一覧です。タップすると、この端末に新規作品として取り込みます。既にこの端末にある作品と同じものは「更新済み」と表示されます。
+        GitHub上に保存されている作品の一覧です。チェックして「選択した作品を取り込む」でこの端末に取り込みます。既にこの端末にある作品と同じものは「この端末にあり」と表示されます。🗑で、GitHub上のファイルそのものを削除できます（この端末のデータは残ります）。
       </div>
       <div class="detail-section" id="githubImportListBox">
         <div id="githubImportListText" style="font-size:0.85rem; line-height:1.6; color:var(--text2);">確認中…</div>
       </div>
+      <button type="button" class="btn primary" id="githubImportSelectedBtn" style="width:100%; margin-top:12px; display:none;">選択した作品を取り込む（<span id="githubImportSelectedCount">0</span>件）</button>
     </div>
   </div>
 </div>
@@ -7683,6 +7684,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   // ---- GitHub Import (new device向け：作品一覧から選んで取り込む, 2026-08-23新設) ----
+  // 2026-08-30拡張：チェックボックスによる複数選択取り込み・GitHub上ファイルの個別削除を追加。
+  let githubImportItems = []; // 直近の一覧取得結果（filename/sha/id/title等）。選択・削除操作の参照元。
+  let githubImportSelectedFilenames = new Set();
+
   async function openGithubImportModal(){
     if(!ghIsConfigured()){
       alert('先にGitHub保存の設定（ハンバーガーメニュー内）を行ってください。');
@@ -7692,12 +7697,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('githubImportModalOverlay').classList.add('active');
     const listEl = document.getElementById('githubImportListText');
     listEl.textContent = '確認中…';
+    githubImportSelectedFilenames = new Set();
+    updateGithubImportSelectedBtn();
 
     const cfg = ghLoadConfig();
     try {
       const files = await ghListAllSyncFiles(cfg);
       if(files.length === 0){
         listEl.textContent = 'GitHub上にはまだ保存された作品がありません。';
+        githubImportItems = [];
         return;
       }
       // 全件を復号してタイトル・更新日を取得する（数十件程度を想定）
@@ -7714,14 +7722,23 @@ h1 .mark { color:var(--accent); font-style:italic; }
             payload: remote.payload
           });
         } catch(_e){
-          // 個別ファイルの復号失敗（暗号鍵不一致など）はスキップし、他のファイルは表示継続
-          items.push({ filename: f.filename, error: true });
+          // 個別ファイルの復号失敗（暗号鍵不一致など）はスキップし、他のファイルは表示継続。
+          // sha自体は一覧取得時点で分かっているため、復号できなくても削除操作は可能にする。
+          items.push({ filename: f.filename, sha: f.sha, error: true });
         }
       }
+      githubImportItems = items;
       renderGithubImportList(items);
     } catch(err){
       listEl.textContent = `一覧の取得に失敗しました：${err.message}`;
     }
+  }
+
+  function updateGithubImportSelectedBtn(){
+    const btn = document.getElementById('githubImportSelectedBtn');
+    const count = githubImportSelectedFilenames.size;
+    document.getElementById('githubImportSelectedCount').textContent = String(count);
+    btn.style.display = count > 0 ? '' : 'none';
   }
 
   function renderGithubImportList(items){
@@ -7730,17 +7747,73 @@ h1 .mark { color:var(--accent); font-style:italic; }
     items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'github-import-item';
+      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
       if(item.error){
-        row.innerHTML = `<div class="git-import-title">⚠️ 復号に失敗：${item.filename}</div><div class="git-import-meta">暗号鍵が異なる可能性があります</div>`;
+        row.innerHTML = `
+          <div style="flex:1;">
+            <div class="git-import-title">⚠️ 復号に失敗：${escapeHTML(item.filename)}</div>
+            <div class="git-import-meta">暗号鍵が異なる可能性があります</div>
+          </div>
+          <button type="button" class="github-import-delete-btn" data-filename="${escapeHTML(item.filename)}" title="GitHub上のファイルを削除" style="flex-shrink:0; background:none; border:1px solid var(--border); border-radius:6px; padding:6px 10px; color:var(--danger); cursor:pointer;">🗑</button>
+        `;
         listEl.appendChild(row);
+        row.querySelector('.github-import-delete-btn').onclick = () => deleteGithubImportItem(item);
         return;
       }
       const existsLocally = projects.some(x => x.id === item.id);
       const badge = existsLocally ? '<span class="git-import-badge">この端末にあり</span>' : '';
-      row.innerHTML = `<div class="git-import-title">${item.title}${badge}</div><div class="git-import-meta">最終更新：${ghFormatDateTime(new Date(item.updatedAt).getTime())}</div>`;
-      row.onclick = () => confirmGithubImportItem(item, existsLocally);
+      const isChecked = githubImportSelectedFilenames.has(item.filename);
+      row.innerHTML = `
+        <input type="checkbox" class="github-import-check" data-filename="${escapeHTML(item.filename)}" ${isChecked ? 'checked' : ''} style="flex-shrink:0; width:20px; height:20px;">
+        <div style="flex:1; cursor:pointer;">
+          <div class="git-import-title">${escapeHTML(item.title)}${badge}</div>
+          <div class="git-import-meta">最終更新：${ghFormatDateTime(new Date(item.updatedAt).getTime())}</div>
+        </div>
+        <button type="button" class="github-import-delete-btn" data-filename="${escapeHTML(item.filename)}" title="GitHub上のファイルを削除" style="flex-shrink:0; background:none; border:1px solid var(--border); border-radius:6px; padding:6px 10px; color:var(--danger); cursor:pointer;">🗑</button>
+      `;
+      const checkEl = row.querySelector('.github-import-check');
+      const textEl = row.querySelector('div[style*="cursor:pointer"]');
+      const toggle = () => {
+        if(githubImportSelectedFilenames.has(item.filename)){
+          githubImportSelectedFilenames.delete(item.filename);
+        } else {
+          githubImportSelectedFilenames.add(item.filename);
+        }
+        checkEl.checked = githubImportSelectedFilenames.has(item.filename);
+        updateGithubImportSelectedBtn();
+      };
+      checkEl.onchange = toggle;
+      textEl.onclick = toggle;
+      row.querySelector('.github-import-delete-btn').onclick = (e) => {
+        e.stopPropagation();
+        deleteGithubImportItem(item);
+      };
       listEl.appendChild(row);
     });
+  }
+
+  // GitHub上のファイルを1件削除する（この端末のローカルデータには一切影響しない）。
+  async function deleteGithubImportItem(item){
+    const label = item.error ? item.filename : item.title;
+    if(!confirm(`「${label}」をGitHub上から削除します。この操作は取り消せません。この端末に保存済みのデータには影響しません。よろしいですか？`)) return;
+    const cfg = ghLoadConfig();
+    try {
+      const res = await ghApiRequest(cfg, item.filename, 'DELETE', {
+        message: `Manuscript sync: delete via import browser (${label})`,
+        sha: item.sha
+      });
+      if(!res.ok){
+        const errText = await res.text().catch(()=> '');
+        throw new Error(`削除エラー（${res.status}）${errText}`);
+      }
+      githubImportItems = githubImportItems.filter(x => x.filename !== item.filename);
+      githubImportSelectedFilenames.delete(item.filename);
+      renderGithubImportList(githubImportItems);
+      updateGithubImportSelectedBtn();
+      ghShowToast(`🗑「${label}」をGitHub上から削除しました`);
+    } catch(err){
+      alert(`削除に失敗しました：${err.message}`);
+    }
   }
 
   function confirmGithubImportItem(item, existsLocally){
@@ -7748,7 +7821,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ? `「${item.title}」はこの端末に既にあります。GitHub上の内容で上書きしますか？この端末側の未同期の変更があれば失われます。`
       : `「${item.title}」をこの端末に新規作品として取り込みます。よろしいですか？`;
     if(!confirm(msg)) return;
+    applyGithubImportItem(item, existsLocally);
+  }
 
+  // 実際の取り込み処理本体（確認ダイアログ通過後に呼ばれる）。単体・複数どちらの経路からも共用する。
+  function applyGithubImportItem(item, existsLocally){
     const incoming = item.payload.project;
     if(existsLocally){
       const idx = projects.findIndex(x => x.id === item.id);
@@ -7760,9 +7837,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
       projects.push(incoming);
       ghMarkSynced(incoming, item.sha);
     }
+  }
+
+  // 選択した複数件をまとめて取り込む。
+  async function importSelectedGithubItems(){
+    const targets = githubImportItems.filter(item => !item.error && githubImportSelectedFilenames.has(item.filename));
+    if(targets.length === 0) return;
+
+    const overwriteTargets = targets.filter(item => projects.some(x => x.id === item.id));
+    const newTargets = targets.filter(item => !projects.some(x => x.id === item.id));
+    let msg = `選択した${targets.length}件をこの端末に取り込みます。`;
+    if(overwriteTargets.length > 0){
+      msg += `\nうち${overwriteTargets.length}件はこの端末に既存の作品で、GitHub上の内容で上書きされます（未同期の変更があれば失われます）。`;
+    }
+    if(!confirm(msg)) return;
+
+    targets.forEach(item => {
+      const existsLocally = projects.some(x => x.id === item.id);
+      applyGithubImportItem(item, existsLocally);
+    });
     save();
     renderGrid();
-    ghShowToast(`☁️「${item.title}」を取り込みました`);
+    ghShowToast(`☁️ ${targets.length}件の作品を取り込みました`);
     document.getElementById('githubImportModalOverlay').classList.remove('active');
   }
 
@@ -7773,6 +7869,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   document.getElementById('githubImportModalOverlay').addEventListener('click', (e) => {
     if(e.target.id === 'githubImportModalOverlay') document.getElementById('githubImportModalOverlay').classList.remove('active');
   });
+  document.getElementById('githubImportSelectedBtn').onclick = importSelectedGithubItems;
 
   document.getElementById('menuImportBtn').onclick = () => {
     document.getElementById('dashDropdown').classList.remove('active');
