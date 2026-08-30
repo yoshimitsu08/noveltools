@@ -7813,7 +7813,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'github-import-item';
-      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
+      row.style.cssText = 'display:flex; flex-direction:row; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
       if(item.error){
         row.innerHTML = `
           <div style="flex:1; min-width:0;">
