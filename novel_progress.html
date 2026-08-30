@@ -3144,13 +3144,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
 <div class="modal-overlay" id="detailModalOverlay">
   <div class="modal">
     <div class="modal-header" style="position:relative;">
-      <h2 id="detailTitle" title="タップしてタイトルを編集">—</h2>
+      <div style="display:flex; align-items:baseline; gap:8px; min-width:0; flex:1;">
+        <span id="detailWorkNumber" style="font-size:0.6em; color:var(--text3); font-family:var(--font-ui); white-space:nowrap; flex-shrink:0;"></span>
+        <h2 id="detailTitle" title="タップしてタイトルを編集" style="min-width:0;">—</h2>
+      </div>
       <input type="text" id="detailTitleInput" style="display:none;">
       <div style="display:flex; align-items:center; gap:6px;">
         <button class="hamburger-btn" id="detailHamburgerBtn">☰</button>
         <button class="modal-close" id="detailModalClose">×</button>
       </div>
       <div class="dropdown-menu" id="detailDropdown" style="top:52px;">
+        <button type="button" class="dropdown-item" id="menuEditWorkNumberBtn">🔢 作品番号を編集</button>
         <button type="button" class="dropdown-item" id="menuEditEditorNameBtn">✂️ 編集を編集</button>
         <button type="button" class="dropdown-item" id="menuEditAuthorBtn">🖋️ 執筆を編集</button>
         <button type="button" class="dropdown-item" id="menuEditProofreaderBtn">🕶️ 推敲を編集</button>
@@ -4763,6 +4767,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(p.aiImportAvailable === undefined) p.aiImportAvailable = false; // 既存作品はAI取り込みフロー対象外
       if(p.writingPrompt === undefined) p.writingPrompt = '';
       if(p.author === undefined) p.author = '';
+      if(p.workNumber === undefined) p.workNumber = ''; // 2026-08-30新設：作品番号（任意、他アプリ連携用の固定識別子）
       if(p.editor === undefined) p.editor = '';
       if(p.proofreader === undefined) p.proofreader = '';
       if(p.revisor === undefined) p.revisor = '';
@@ -4806,6 +4811,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
     } catch(_e){}
   }
   function uid(){ return 'p' + Date.now() + Math.random().toString(36).slice(2,8); }
+  // 2026-08-30新設：作品番号のバリデーション。Ledger（sales_ledger.html）の作品IDと同じ規則
+  // （英数字・ハイフン・アンダーバーのみ）を踏襲し、他アプリとの連携時に安全な文字列にする。
+  function isValidWorkNumber(v){
+    return /^[A-Za-z0-9_-]+$/.test(v);
+  }
+  // 指定した作品番号が、自分以外の作品と重複していないか確認する。
+  function isWorkNumberDuplicate(value, excludeId){
+    return projects.some(x => x.id !== excludeId && projectKind(x) === 'novel' && (x.workNumber || '') === value);
+  }
+  // 2026-08-30新設：詳細モーダルのタイトル横に作品番号を表示する（未設定なら何も表示しない）。
+  function renderDetailWorkNumber(p){
+    const el = document.getElementById('detailWorkNumber');
+    el.textContent = p.workNumber ? p.workNumber : '';
+  }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
   function nowYYMMDDHH(){
     const d = new Date();
@@ -5141,6 +5160,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       id: uid(),
       kind: 'novel',
       title: '',
+      workNumber: '', // 2026-08-30新設：作品番号（任意、他アプリ連携用の固定識別子）
       author: '',
       editor: '',
       proofreader: '',
@@ -5379,7 +5399,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           <span class="num">${(p.wordcount||0).toLocaleString()}字</span>
           <span>${done}/${total}章</span>
         </div>
-        <div class="rc-id-line">${escapeHTML(p.id.slice(0, 7))}…</div>
+        <div class="rc-id-line">${p.workNumber ? escapeHTML(p.workNumber) : '作品番号未設定'}</div>
       </div>
       <div class="rc-check"></div>
     </div>`;
@@ -6721,6 +6741,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     document.getElementById('detailTitle').textContent = p.title || '無題';
     updateAuthorDisplay(p);
     document.getElementById('detailProjectIdText').textContent = p.id;
+    renderDetailWorkNumber(p);
     const pIsPinned = p.id === pinnedProjectId;
     document.getElementById('pinToggleBtn').textContent = pIsPinned ? '📌 優先を解除' : '📌 優先に設定';
     document.getElementById('pinToggleBtn').classList.toggle('active', pIsPinned);
@@ -7558,6 +7579,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   // ネストされたフィールド（imagePrompts.main.prompt等）は今回のスコープ外（次回以降の拡張課題）。
   const GH_CONFLICT_TEXT_FIELDS = [
     { key: 'title', label: 'タイトル' },
+    { key: 'workNumber', label: '作品番号' },
     { key: 'author', label: '作者名' },
     { key: 'editor', label: '編集担当' },
     { key: 'proofreader', label: '校正担当' },
@@ -8025,6 +8047,29 @@ h1 .mark { color:var(--accent); font-style:italic; }
     p.updatedAt = Date.now();
     save();
     updateAuthorDisplay(p);
+  };
+  // 2026-08-30新設：作品番号の編集（他アプリ連携用の固定識別子。IDと違い複製・インポートでも
+  // 変えず人間が任意に決める。任意入力・英数字/ハイフン/アンダーバーのみ・重複不可）。
+  document.getElementById('menuEditWorkNumberBtn').onclick = () => {
+    document.getElementById('detailDropdown').classList.remove('active');
+    const p = projects.find(x=>x.id===currentDetailId);
+    if(!p) return;
+    const newValue = prompt('作品番号を入力してください（空欄で未設定にできます。使える文字は英数字・ハイフン・アンダーバーのみ）', p.workNumber || '');
+    if(newValue === null) return;
+    const trimmed = newValue.trim();
+    if(trimmed && !isValidWorkNumber(trimmed)){
+      alert('作品番号に使えるのは英数字・ハイフン（-）・アンダーバー（_）のみです。');
+      return;
+    }
+    if(trimmed && isWorkNumberDuplicate(trimmed, p.id)){
+      alert(`作品番号「${trimmed}」は既に別の作品で使われています。`);
+      return;
+    }
+    p.workNumber = trimmed;
+    p.updatedAt = Date.now();
+    save();
+    updateAuthorDisplay(p);
+    renderDetailWorkNumber(p);
   };
   document.getElementById('menuEditImageCreditBtn').onclick = () => {
     document.getElementById('detailDropdown').classList.remove('active');
