@@ -7793,7 +7793,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
       if(item.error){
         row.innerHTML = `
-          <div style="flex:1;">
+          <div style="flex:1; min-width:0;">
             <div class="git-import-title">⚠️ 復号に失敗：${escapeHTML(item.filename)}</div>
             <div class="git-import-meta">暗号鍵が異なる可能性があります</div>
           </div>
@@ -7808,7 +7808,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const isChecked = githubImportSelectedFilenames.has(item.filename);
       row.innerHTML = `
         <input type="checkbox" class="github-import-check" data-filename="${escapeHTML(item.filename)}" ${isChecked ? 'checked' : ''} style="flex-shrink:0; width:20px; height:20px;">
-        <div style="flex:1; cursor:pointer;">
+        <div style="flex:1; min-width:0; cursor:pointer;">
           <div class="git-import-title">${escapeHTML(item.title)}${badge}</div>
           <div class="git-import-meta">最終更新：${ghFormatDateTime(new Date(item.updatedAt).getTime())}</div>
         </div>
