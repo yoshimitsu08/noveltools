@@ -4701,10 +4701,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
     (selector.seriesCards[activeSeries.id] || []).forEach(card => {
       if(!card.selected) return;
       const text = escapeHTML(card.text);
+      const highlighted = highlightDraftMarkers(text);
       if(bookmarkId && card.id === bookmarkId){
-        parts.push(`<span class="bookmark-sentence" style="border-bottom-color:${bookmarkBorderColor};">${text}</span>`);
+        parts.push(`<span class="bookmark-sentence" style="border-bottom-color:${bookmarkBorderColor};">${highlighted}</span>`);
       } else {
-        parts.push(text);
+        parts.push(highlighted);
       }
     });
     return parts.join('\n');
@@ -9069,7 +9070,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <div class="all-preview-chapter">
           <div class="all-preview-chapter-heading">${escapeHTML(heading)}</div>
           <div class="all-preview-chapter-body">${
-            composedText ? escapeHTML(composedText) : `<span class="manuscript-preview-empty">（本文未執筆）</span>`
+            composedText ? highlightDraftMarkers(escapeHTML(composedText)) : `<span class="manuscript-preview-empty">（本文未執筆）</span>`
           }</div>
         </div>
       `;
@@ -9992,7 +9993,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <div class="selector-card-text-wrap-outer">
           <div class="selector-card-text-wrap">
             ${isSelected ? `<div class="selector-card-tag" style="color:${s.color}">✓ 採用中</div>` : ''}
-            <div class="selector-card-text">${escapeHTML(card.text)}</div>
+            <div class="selector-card-text">${highlightDraftMarkers(escapeHTML(card.text))}</div>
           </div>
         </div>
       `;
