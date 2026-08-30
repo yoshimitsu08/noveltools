@@ -2445,6 +2445,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
   line-height:1.7;
   color:var(--text);
 }
+/* 2026-08-30新設：清書時に書き換えが必要な仮文字列マーカー（[SKIP]等・〔〔〕〕）のハイライト。
+   採用・不採用にかかわらず一様に適用し、清書時の書き換え漏れを防ぐための目印。 */
+.draft-marker-highlight {
+  background:#f0d000;
+  color:#a01818;
+  font-weight:700;
+  padding:0 2px;
+  border-radius:2px;
+}
 .selector-card2-side {
   flex-shrink:0;
   width:34px;
@@ -5419,6 +5428,17 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   function escapeHTML(s){
     return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // 2026-08-30新設：清書時に書き換えが必要な「仮の文字列」マーカーを本文中でハイライトする。
+  // 対象パターンは2種：
+  //  ①「[単語]」（半角角括弧＋中身一式）例：[SKIP] [CHECK] … 括弧ごとまとめて色付け
+  //  ②「〔〔」「〕〕」（全角亀甲括弧の2連続）… 記号部分のみ色付け。間に挟まる本文（長文もありうる）は対象外
+  // escapeHTML後の文字列に対して適用する（対象記号はエスケープされないため安全に使える）。
+  function highlightDraftMarkers(escapedText){
+    return escapedText
+      .replace(/\[[^\]]*\]/g, m => `<span class="draft-marker-highlight">${m}</span>`)
+      .replace(/〔〔|〕〕/g, m => `<span class="draft-marker-highlight">${m}</span>`);
   }
 
   // 設定・プロットエディタのtextareaを、入力量に応じて自動で高さが伸びる仕様にする。
@@ -9544,7 +9564,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     cardEl.innerHTML = `
       <div class="selector-card2-row" style="display:flex; align-items:stretch; width:100%;">
         <button type="button" class="selector-card2-toggle" title="タップで採用切替" style="${isSelected ? `background:${s.color};` : ''}">${isSelected ? '✓' : s.label}</button>
-        <div class="selector-card2-text">${escapeHTML(card.text) || '<span class="selector-empty-text">（空のカード）</span>'}</div>
+        <div class="selector-card2-text">${card.text ? highlightDraftMarkers(escapeHTML(card.text)) : '<span class="selector-empty-text">（空のカード）</span>'}</div>
         <div class="selector-card2-side">
           ${isReorderMode
             ? `<div class="selector-card2-drag-handle" title="ドラッグして並べ替え">≡</div>`
