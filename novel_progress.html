@@ -8969,11 +8969,18 @@ h1 .mark { color:var(--accent); font-style:italic; }
         tab.dataset.chapterId = ch.id;
         bindLongPressWithFlag(
           tab,
-          () => { promptRenameChapter(p, ch); },
+          () => {
+            // 2026-09-01修正：タブは章数が変わらない限り使い回されるため、生成時のpをクロージャで
+            // 握り続けると、GitHub取込等でprojects[idx]がまるごと差し替わった際に古いデータのまま
+            // 固定されてしまう。クリック/長押しされた時点で毎回最新のprojectsから取り直す。
+            const freshP = projects.find(x => x.id === currentManuscriptId) || p;
+            promptRenameChapter(freshP, ch);
+          },
           () => {
             currentChapterId = ch.id;
-            renderChapterTabs(p);
-            renderManuscriptEditArea(p);
+            const freshP = projects.find(x => x.id === currentManuscriptId) || p;
+            renderChapterTabs(freshP);
+            renderManuscriptEditArea(freshP);
           }
         );
         tabs.appendChild(tab);
@@ -8982,8 +8989,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
       allTab.dataset.chapterId = ALL_PREVIEW_TAB_ID;
       allTab.onclick = () => {
         currentChapterId = ALL_PREVIEW_TAB_ID;
-        renderChapterTabs(p);
-        renderManuscriptEditArea(p);
+        // 2026-09-01修正：全章プレビューも同様に、クリック時点の最新データを取り直す
+        const freshP = projects.find(x => x.id === currentManuscriptId) || p;
+        renderChapterTabs(freshP);
+        renderManuscriptEditArea(freshP);
       };
       tabs.appendChild(allTab);
     }
