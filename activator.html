@@ -961,8 +961,10 @@ function markComplete(){
 function unmarkComplete(){
   const t = achieved.find(x => x.id === currentEditId);
   if(!t) return;
-  t.status = 'active';
   t.quadrant = t.lastQuadrant || null;
+  // 戻す象限が無い場合は「未選別」に戻す（quadrant:nullのままactiveにすると
+  // マトリクスにも未選別カード置き場にも表示されず行方不明になるため。2026-08-27修正）
+  t.status = t.quadrant ? 'active' : 'unsorted';
   tasks.push(t);
   achieved = achieved.filter(x => x.id !== t.id);
   save();
