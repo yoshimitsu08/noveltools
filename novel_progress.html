@@ -8371,6 +8371,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
       if(overlayId === 'githubSyncModalOverlay' && currentGithubSyncProjectId){
         const backId = currentGithubSyncProjectId;
         openDetail(backId, null, true); // skipHistoryPush=true：履歴は既にこのdetailの状態にある
+        // 2026-08-30修正：openDetail()は詳細画面のDOM要素しか更新しないため、
+        // 本文エディタ/設定プロットエディタを開いたままGitHub取得を行った場合、
+        // 画面に見えている章タブ・本文プレビュー・設定内容が古いまま取り残される不具合があった。
+        // 該当ビューが「表示中」かつ「今回同期した作品と同じもの」を開いている場合のみ、追加で再描画する。
+        const p = projects.find(x => x.id === backId);
+        if(p){
+          if(document.getElementById('manuscriptView').classList.contains('active') && currentManuscriptId === backId){
+            renderChapterTabs(p);
+            renderManuscriptEditArea(p);
+          }
+          if(document.getElementById('settingView').classList.contains('active') && currentSettingId === backId){
+            renderSections(p);
+            renderChapters(p);
+          }
+        }
       }
 
       // 2026-08-23修正：MutationObserverのコールバックは非同期に発火するため、
