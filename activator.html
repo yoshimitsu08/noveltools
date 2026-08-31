@@ -56,6 +56,15 @@ input[type="text"], textarea, select {
   font-size:0.95rem;
   width:100%;
 }
+input[type="date"] {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:8px 10px;
+  font-size:0.95rem;
+  width:100%;
+  color-scheme:dark;
+}
 
 /* ---------- Header ---------- */
 header {
@@ -366,14 +375,22 @@ section { margin-bottom:28px; }
 .mm-btn {
   text-align:left;
   padding:10px 12px;
-  font-size:0.82rem;
+  font-size:0.85rem;
   border-radius:6px;
   display:flex;
   align-items:center;
   gap:6px;
+  color:var(--text);
+  border:1px solid var(--border);
+  background:var(--bg3);
 }
-.mm-btn.selected { border-width:2px; font-weight:bold; }
-.mm-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.mm-btn.selected {
+  border-color:var(--mm-color, var(--accent));
+  border-width:2px;
+  background:color-mix(in srgb, var(--mm-color, var(--accent)) 22%, var(--bg3));
+  font-weight:bold;
+}
+.mm-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
 
 .image-row { display:flex; gap:8px; align-items:center; }
 .image-thumb-wrap {
@@ -545,16 +562,16 @@ section { margin-bottom:28px; }
 
     <div class="field-label">象限</div>
     <div class="mini-matrix" id="editMiniMatrix">
-      <button type="button" class="mm-btn" data-quadrant="urgent-important" style="background:rgba(192,96,64,0.12); border-color:var(--q-urgent-important); color:var(--q-urgent-important);" onclick="selectQuadrant('urgent-important')">
+      <button type="button" class="mm-btn" data-quadrant="urgent-important" style="--mm-color:var(--q-urgent-important);" onclick="selectQuadrant('urgent-important')">
         <span class="mm-dot" style="background:var(--q-urgent-important)"></span>緊急×重要
       </button>
-      <button type="button" class="mm-btn" data-quadrant="important-only" style="background:rgba(200,169,110,0.12); border-color:var(--q-important-only); color:var(--q-important-only);" onclick="selectQuadrant('important-only')">
+      <button type="button" class="mm-btn" data-quadrant="important-only" style="--mm-color:var(--q-important-only);" onclick="selectQuadrant('important-only')">
         <span class="mm-dot" style="background:var(--q-important-only)"></span>重要のみ
       </button>
-      <button type="button" class="mm-btn" data-quadrant="urgent-only" style="background:rgba(143,168,200,0.12); border-color:var(--q-urgent-only); color:var(--q-urgent-only);" onclick="selectQuadrant('urgent-only')">
+      <button type="button" class="mm-btn" data-quadrant="urgent-only" style="--mm-color:var(--q-urgent-only);" onclick="selectQuadrant('urgent-only')">
         <span class="mm-dot" style="background:var(--q-urgent-only)"></span>緊急のみ
       </button>
-      <button type="button" class="mm-btn" data-quadrant="neither" style="background:rgba(112,104,88,0.12); border-color:var(--q-neither); color:var(--q-neither);" onclick="selectQuadrant('neither')">
+      <button type="button" class="mm-btn" data-quadrant="neither" style="--mm-color:var(--q-neither);" onclick="selectQuadrant('neither')">
         <span class="mm-dot" style="background:var(--q-neither)"></span>どちらでもない
       </button>
     </div>
@@ -571,7 +588,8 @@ section { margin-bottom:28px; }
     <textarea id="editTaskMemo" rows="3" placeholder="メモを入力"></textarea>
 
     <div class="sheet-footer">
-      <button type="button" class="btn-complete" onclick="markComplete()">✓ 完了にする</button>
+      <button type="button" class="btn-complete" id="btnMarkComplete" onclick="markComplete()">✓ 完了にする</button>
+      <button type="button" id="btnUnmarkComplete" onclick="unmarkComplete()" style="display:none;">↩ 完了を取り消す</button>
       <button type="button" onclick="closeEditModal()">閉じる</button>
     </div>
     <div class="sheet-footer">
@@ -698,7 +716,7 @@ function renderUnsorted(){
     const card = document.createElement('div');
     card.className = 'unsorted-card';
     card.textContent = t.title || '（無題）';
-    card.onclick = () => openEditModal(t.id);
+    card.onclick = () => { isNewTaskFlow = false; openEditModal(t.id); };
     strip.appendChild(card);
   });
 
@@ -716,7 +734,9 @@ function renderAchieved(){
   achieved.slice().reverse().slice(0,10).forEach(t => {
     const item = document.createElement('div');
     item.className = 'achieved-item';
+    item.style.cursor = 'pointer';
     item.innerHTML = `<span class="achieved-check">✓</span><span>${escapeHtml(t.title || '（無題）')}</span>`;
+    item.onclick = () => { isNewTaskFlow = false; openEditModal(t.id); };
     list.appendChild(item);
   });
 }
@@ -789,7 +809,7 @@ function renderTaskCard(t){
   const card = document.createElement('div');
   card.className = 'task-card';
   card.style.borderLeftColor = QUADRANTS[t.quadrant] ? QUADRANTS[t.quadrant].color : 'var(--border)';
-  card.onclick = () => openEditModal(t.id);
+  card.onclick = () => { isNewTaskFlow = false; openEditModal(t.id); };
 
   let progressHtml = '';
   if(t.category === 'work'){
@@ -820,17 +840,25 @@ function renderTaskCard(t){
 }
 
 /* ---------- 編集モーダル ---------- */
+let isNewTaskFlow = false; // 新規作成直後は「完了にする」ボタンを隠す（2026-08-27対応）
+
 function createNewTask(){
   const t = newTaskSkeleton();
   tasks.push(t);
   save();
+  isNewTaskFlow = true;
   openEditModal(t.id);
+}
+
+function findTaskAnywhere(id){
+  return tasks.find(x => x.id === id) || achieved.find(x => x.id === id);
 }
 
 function openEditModal(id){
   currentEditId = id;
-  const t = tasks.find(x => x.id === id);
+  const t = findTaskAnywhere(id);
   if(!t) return;
+  const isAchieved = t.status === 'complete';
 
   document.getElementById('editTaskId').textContent = t.id;
   document.getElementById('editTaskBrand').textContent = t.brand || '未設定';
@@ -849,9 +877,10 @@ function openEditModal(id){
   });
   sel.value = t.phase || 0;
 
-  // 象限ミニマトリクスの選択状態
+  // 象限ミニマトリクスの選択状態（完了済みは直前の象限を参照用に表示。編集は不可にする）
   document.querySelectorAll('#editMiniMatrix .mm-btn').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.quadrant === t.quadrant);
+    btn.classList.toggle('selected', btn.dataset.quadrant === (t.quadrant || t.lastQuadrant));
+    btn.disabled = isAchieved;
   });
 
   // 画像サムネイル（右上、クリックで差し替え）
@@ -862,21 +891,41 @@ function openEditModal(id){
     thumbWrap.innerHTML = '<span style="font-size:0.68rem; color:var(--text3);">画像</span>';
   }
 
+  // フッターボタンの出し分け（2026-08-27対応）
+  // - 新規作成直後：完了ボタン非表示
+  // - 完了済み（実績から開いた）：完了ボタンの代わりに「完了を取り消す」を表示
+  // - それ以外（既存の進行中タスク）：完了ボタンを表示
+  const btnComplete = document.getElementById('btnMarkComplete');
+  const btnUnmark = document.getElementById('btnUnmarkComplete');
+  if(isAchieved){
+    btnComplete.style.display = 'none';
+    btnUnmark.style.display = '';
+  }else if(isNewTaskFlow){
+    btnComplete.style.display = 'none';
+    btnUnmark.style.display = 'none';
+  }else{
+    btnComplete.style.display = '';
+    btnUnmark.style.display = 'none';
+  }
+
   document.getElementById('editModalOverlay').classList.add('active');
 }
 
 function closeEditModal(){
-  // 入力内容を保存してから閉じる
-  const t = tasks.find(x => x.id === currentEditId);
+  // 入力内容を保存してから閉じる（完了済みタスクは読み取り中心なのでタイトル/メモ/日付のみ許可）
+  const t = findTaskAnywhere(currentEditId);
   if(t){
     t.title = document.getElementById('editTaskTitle').value.trim();
     t.date = document.getElementById('editTaskDate').value;
     t.memo = document.getElementById('editTaskMemo').value;
-    t.phase = parseInt(document.getElementById('editPhaseSelect').value, 10) || 0;
+    if(t.status !== 'complete'){
+      t.phase = parseInt(document.getElementById('editPhaseSelect').value, 10) || 0;
+    }
     save();
   }
   document.getElementById('editModalOverlay').classList.remove('active');
   currentEditId = null;
+  isNewTaskFlow = false;
   renderTop();
   if(document.getElementById('quadrantListView').classList.contains('active')){
     renderQuadrantList();
@@ -885,12 +934,14 @@ function closeEditModal(){
 
 function selectQuadrant(q){
   const t = tasks.find(x => x.id === currentEditId);
-  if(!t) return;
+  if(!t) return; // 完了済みタスクは象限変更不可
   t.quadrant = q;
   t.status = 'active';
+  isNewTaskFlow = false; // 象限を選んだ時点で新規フローは終了、完了ボタンを表示してよい
   document.querySelectorAll('#editMiniMatrix .mm-btn').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.quadrant === q);
   });
+  document.getElementById('btnMarkComplete').style.display = '';
   save();
 }
 
@@ -898,6 +949,8 @@ function markComplete(){
   const t = tasks.find(x => x.id === currentEditId);
   if(!t) return;
   t.status = 'complete';
+  t.lastQuadrant = t.quadrant; // 完了取り消し時に戻す先（2026-08-27対応）
+  t.quadrant = null;
   t.title = document.getElementById('editTaskTitle').value.trim() || t.title;
   achieved.push(t);
   tasks = tasks.filter(x => x.id !== t.id);
@@ -905,12 +958,25 @@ function markComplete(){
   closeEditModal();
 }
 
+function unmarkComplete(){
+  const t = achieved.find(x => x.id === currentEditId);
+  if(!t) return;
+  t.status = 'active';
+  t.quadrant = t.lastQuadrant || null;
+  tasks.push(t);
+  achieved = achieved.filter(x => x.id !== t.id);
+  save();
+  closeEditModal();
+}
+
 function deleteCurrentTask(){
   if(!confirm('このタスクを削除します。よろしいですか？')) return;
   tasks = tasks.filter(x => x.id !== currentEditId);
+  achieved = achieved.filter(x => x.id !== currentEditId);
   save();
   document.getElementById('editModalOverlay').classList.remove('active');
   currentEditId = null;
+  isNewTaskFlow = false;
   renderTop();
   if(document.getElementById('quadrantListView').classList.contains('active')){
     renderQuadrantList();
