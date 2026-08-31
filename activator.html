@@ -1117,8 +1117,27 @@ function restartRotatorTimer(){
   rotatorTimer = setInterval(() => goToRotatorSlide(rotatorIndex+1), headerRotateMs);
 }
 
+/* ---------- 起動時マイグレーション（2026-08-27追加） ----------
+   完了取り消しの旧バグにより quadrant:null かつ status:'active' という
+   矛盾状態のタスクが残っている可能性があるため、起動のたびに自動修復する。
+   （マトリクスにも未選別カード置き場にも表示されず「行方不明」になっていたもの） */
+function migrateOrphanTasks(){
+  let fixed = 0;
+  tasks.forEach(t => {
+    if(t.status === 'active' && !t.quadrant){
+      t.status = 'unsorted';
+      fixed++;
+    }
+  });
+  if(fixed > 0){
+    save();
+    console.log(`[activator] 行方不明だったタスクを${fixed}件、未選別カード置き場に復旧しました`);
+  }
+}
+
 /* ---------- 初期化 ---------- */
 load();
+migrateOrphanTasks();
 renderTop();
 </script>
 </body>
