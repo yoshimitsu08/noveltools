@@ -518,7 +518,8 @@ function importNoteCSV(text) {
   }
 
   const existingTxIds = new Set(ledgerData.sales.map(s => s.txId));
-  let added = 0, skipped = 0;
+  const existingSalesByTxId = new Map(ledgerData.sales.map(s => [s.txId, s]));
+  let added = 0, skipped = 0, updateCandidates = 0;
   let autoRegisteredCustomers = 0;
   const unmatchedContentNames = new Set();
 
@@ -526,7 +527,33 @@ function importNoteCSV(text) {
     const r = rows[i];
     const txId = (r[NOTE_CSV_COLS.txId] || '').trim();
     if (!txId) continue;
-    if (existingTxIds.has(txId)) { skipped++; continue; }
+    if (existingTxIds.has(txId)) {
+      skipped++;
+      // 既存取引と内容（金額・税額・決済方法）に差異がないか確認する。
+      // 返金など、取引IDは同じでも後から内容が変わるケースがあるため、
+      // 自動上書きはせず「更新候補」として保持し、ユーザーが確認してから反映する（安全側）。
+      const existingSale = existingSalesByTxId.get(txId);
+      if (existingSale && !existingSale.pendingUpdate) {
+        const newAmount = Number(r[NOTE_CSV_COLS.amount] || 0);
+        const newAmountExTax = Number(r[NOTE_CSV_COLS.amountExTax] || 0);
+        const newTax = Number(r[NOTE_CSV_COLS.tax] || 0);
+        const newPaymentMethod = (r[NOTE_CSV_COLS.paymentMethod] || '').trim();
+        const changed = existingSale.amount !== newAmount
+          || existingSale.amountExTax !== newAmountExTax
+          || existingSale.tax !== newTax
+          || existingSale.paymentMethod !== newPaymentMethod;
+        if (changed) {
+          existingSale.pendingUpdate = {
+            amount: newAmount,
+            amountExTax: newAmountExTax,
+            tax: newTax,
+            paymentMethod: newPaymentMethod
+          };
+          updateCandidates++;
+        }
+      }
+      continue;
+    }
 
     const contentName = (r[NOTE_CSV_COLS.contentName] || '').trim();
     const issuer = (r[NOTE_CSV_COLS.issuer] || '').trim();
@@ -568,7 +595,7 @@ function importNoteCSV(text) {
 
   ledgerData.meta.lastImportAt = new Date().toISOString();
   markDirty();
-  return { added, skipped, unmatchedContentNames: Array.from(unmatchedContentNames), autoRegisteredCustomers };
+  return { added, skipped, updateCandidates, unmatchedContentNames: Array.from(unmatchedContentNames), autoRegisteredCustomers };
 }
 
 /* =========================================================
@@ -753,6 +780,9 @@ function renderImportExport() {
         }
         if (result.unmatchedContentNames && result.unmatchedContentNames.length > 0) {
           msg += `<br><span style="color:var(--warn);">作品未紐づけが ${result.unmatchedContentNames.length}件あります。「未紐づけ」タブで対応してください。</span>`;
+        }
+        if (result.updateCandidates > 0) {
+          msg += `<br><span style="color:var(--warn);">内容が変更された取引（返金など）が ${result.updateCandidates}件あります。「未紐づけ」タブの「更新候補」で確認してください。</span>`;
         }
         resultEl.innerHTML = msg;
         renderImportExport();
@@ -995,6 +1025,7 @@ function renderUnlinked() {
   const workUnlinkedSales = ledgerData.sales.filter(s => !s.workId);
   const guestSales = ledgerData.sales.filter(s => !s.customerId && !s.guestChecked);
   const guestCheckedSales = ledgerData.sales.filter(s => !s.customerId && s.guestChecked);
+  const updateCandidateSales = ledgerData.sales.filter(s => s.pendingUpdate);
 
   const workOptions = ledgerData.works.map(w => `<option value="${w.id}">${escapeHtml(w.title)}</option>`).join('');
   const customerOptions = ledgerData.customers.map(c => `<option value="${c.id}">${escapeHtml(c.displayName)}</option>`).join('');
@@ -1036,7 +1067,35 @@ function renderUnlinked() {
     }).join('');
   }
 
+  let updateSectionHtml = '';
+  if (updateCandidateSales.length > 0) {
+    updateSectionHtml = updateCandidateSales.map(s => {
+      const p = s.pendingUpdate;
+      const rows = [];
+      if (s.amount !== p.amount) rows.push(`金額：¥${s.amount} → ¥${p.amount}`);
+      if (s.amountExTax !== p.amountExTax) rows.push(`税抜金額：¥${s.amountExTax} → ¥${p.amountExTax}`);
+      if (s.tax !== p.tax) rows.push(`消費税額：¥${s.tax} → ¥${p.tax}`);
+      if (s.paymentMethod !== p.paymentMethod) rows.push(`決済方法：${escapeHtml(s.paymentMethod)} → ${escapeHtml(p.paymentMethod)}`);
+      const work = ledgerData.works.find(w => w.id === s.workId);
+      return `
+      <div class="card" style="border-color:var(--warn);">
+        <div style="font-size:0.85rem;">${work ? escapeHtml(work.title) : escapeHtml(s.contentNameRaw)}</div>
+        <div style="color:var(--text3);font-size:0.75rem;margin:4px 0 10px;">取引ID: ${s.txId} ／ ${formatNoteDatetime(s.datetime)}</div>
+        <div style="font-size:0.8rem;color:var(--warn);margin-bottom:10px;">${rows.join('<br>')}</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" data-apply-update="${s.txId}" style="flex:1;font-size:0.78rem;">反映する</button>
+          <button class="btn warn" data-dismiss-update="${s.txId}" style="flex:1;font-size:0.78rem;">今回は反映しない</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   el.innerHTML = `
+    ${updateCandidateSales.length > 0 ? `
+    <div class="section-title" style="color:var(--warn);">更新候補（返金など・${updateCandidateSales.length}件）</div>
+    <p style="color:var(--text2);font-size:0.8rem;margin-bottom:10px;">同じ取引IDのデータが再取込され、内容（金額・決済方法など）に変更が見つかりました。内容を確認のうえ、反映するか選んでください。</p>
+    ${updateSectionHtml}` : ''}
+
     <div class="section-title">作品の未紐づけ（${workUnlinkedSales.length}件）</div>
     ${workSectionHtml}
 
@@ -1050,6 +1109,25 @@ function renderUnlinked() {
       ${guestCheckedSales.map(s => `${escapeHtml(s.buyerNameRaw)} ／ ${s.txId.slice(0,8)}… <button data-unmark-checked="${s.txId}" style="background:none;border:none;color:var(--text2);text-decoration:underline;cursor:pointer;font-size:0.75rem;">戻す</button>`).join('<br>')}
     </div>` : ''}
   `;
+
+  el.querySelectorAll('[data-apply-update]').forEach(btn => btn.onclick = () => {
+    const txId = btn.dataset.applyUpdate;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (!sale || !sale.pendingUpdate) return;
+    Object.assign(sale, sale.pendingUpdate);
+    delete sale.pendingUpdate;
+    markDirty();
+    renderUnlinked();
+  });
+
+  el.querySelectorAll('[data-dismiss-update]').forEach(btn => btn.onclick = () => {
+    const txId = btn.dataset.dismissUpdate;
+    const sale = ledgerData.sales.find(s => s.txId === txId);
+    if (!sale) return;
+    delete sale.pendingUpdate;
+    markDirty();
+    renderUnlinked();
+  });
 
   el.querySelectorAll('[data-link-work]').forEach(sel => sel.onchange = (e) => {
     const txId = e.target.dataset.linkWork;
