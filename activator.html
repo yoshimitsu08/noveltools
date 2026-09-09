@@ -453,7 +453,10 @@ section { margin-bottom:28px; }
 <body>
 
 <header>
-  <h1>activator</h1>
+  <div style="display:flex; align-items:center; justify-content:space-between;">
+    <h1>activator</h1>
+    <button type="button" onclick="openRecurringView()" style="font-size:0.75rem; padding:6px 10px;" title="定期タスク管理">⟳ 定期タスク</button>
+  </div>
   <div class="header-rotator-wrap">
     <div class="header-rotator" id="headerRotator">
       <div class="rotator-slide active" data-slide="stats">
@@ -536,6 +539,23 @@ section { margin-bottom:28px; }
     <div id="qlOtherCards"></div>
   </div>
 
+  <!-- ============ 定期タスク管理画面 ============ -->
+  <div class="quadrant-list-view" id="recurringView">
+    <div class="ql-header">
+      <div class="ql-title">
+        <div>
+          <h2>定期タスク管理</h2>
+          <div class="ql-count" id="recurringCount">0件のテンプレート</div>
+        </div>
+      </div>
+      <button class="back-btn" onclick="closeRecurringView()">← トップへ戻る</button>
+    </div>
+
+    <button type="button" style="width:100%; padding:12px; margin-bottom:14px; color:var(--accent); border-color:var(--accent);" onclick="createNewRecurringTemplate()">＋ 新しい定期タスクを追加</button>
+
+    <div id="recurringList"></div>
+  </div>
+
 </main>
 
 <!-- ============ 編集モーダル ============ -->
@@ -612,6 +632,78 @@ section { margin-bottom:28px; }
   </div>
 </div>
 
+<!-- ============ 定期タスクテンプレート編集モーダル ============ -->
+<div class="modal-overlay" id="recurringEditModalOverlay">
+  <div class="modal-sheet">
+    <div class="sheet-grabber"></div>
+
+    <div class="field-label">タイトル（生成されるカードのタイトル）</div>
+    <input type="text" id="recTitle" placeholder="例：まとめ記事の投稿">
+
+    <div class="field-label">ブランド・アプリ</div>
+    <input type="text" id="recBrand" placeholder="例：しーば4 / 藤岡香織 / Ledger など">
+
+    <div class="field-label">カテゴリ</div>
+    <select id="recCategory">
+      <option value="work">作品制作</option>
+      <option value="tool">ツール開発</option>
+    </select>
+
+    <div class="field-label">サイクル</div>
+    <select id="recCycleType" onchange="updateCycleFieldsVisibility()">
+      <option value="daily">毎日</option>
+      <option value="weekly">毎週（曜日指定）</option>
+      <option value="monthly">毎月（日付指定）</option>
+      <option value="once">単発（特定の日付）</option>
+    </select>
+
+    <div id="recWeeklyField" style="display:none;">
+      <div class="field-label">曜日</div>
+      <select id="recWeekday">
+        <option value="0">日曜日</option>
+        <option value="1">月曜日</option>
+        <option value="2">火曜日</option>
+        <option value="3">水曜日</option>
+        <option value="4">木曜日</option>
+        <option value="5">金曜日</option>
+        <option value="6">土曜日</option>
+      </select>
+    </div>
+
+    <div id="recMonthlyField" style="display:none;">
+      <div class="field-label">毎月の日付</div>
+      <input type="number" id="recMonthDay" min="1" max="31" value="1">
+    </div>
+
+    <div id="recOnceField" style="display:none;">
+      <div class="field-label">日付</div>
+      <input type="date" id="recOnceDate">
+    </div>
+
+    <div class="field-label">生成先の象限</div>
+    <select id="recTargetQuadrant">
+      <option value="">未選別カード置き場</option>
+      <option value="urgent-important">緊急×重要</option>
+      <option value="important-only">重要のみ</option>
+      <option value="urgent-only">緊急のみ</option>
+      <option value="neither">どちらでもない</option>
+    </select>
+
+    <div class="field-label">状態</div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:0.88rem;">
+      <input type="checkbox" id="recEnabled" style="width:auto;" checked> 有効にする
+    </label>
+
+    <div class="sheet-footer">
+      <button type="button" onclick="saveRecurringTemplate()">保存</button>
+      <button type="button" onclick="closeRecurringEditModal()">閉じる</button>
+    </div>
+    <div class="sheet-footer">
+      <button type="button" class="btn-delete" onclick="deleteRecurringTemplate()">このテンプレートを削除</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* =========================================================
    activator — データ構造・状態管理
@@ -632,9 +724,11 @@ const PHASES = [
 
 const UNSORTED_WARNING_THRESHOLD = 10; // 2026-08-26確定
 const PINNED_MAX = 5; // 2026-08-26確定
+const WEEKDAY_LABELS = ['日','月','火','水','木','金','土'];
 
 let tasks = [];       // {id, title, quadrant, category('work'|'tool'), brand, phase, date, memo, image:{data,x,y}, pinned, status, createdAt}
 let achieved = [];    // 完了済みタスクのアーカイブ
+let recurringTemplates = []; // {id, title, brand, category, cycle:{type:'daily'|'weekly'|'monthly'|'once', weekday, day, date}, targetQuadrant(null=未選別), enabled, lastGeneratedDate}
 let currentEditId = null;
 let pendingImageDataUrl = null;
 let cropPos = {x:50, y:50};
@@ -643,12 +737,27 @@ let cropPos = {x:50, y:50};
 function save(){
   localStorage.setItem('activator_tasks', JSON.stringify(tasks));
   localStorage.setItem('activator_achieved', JSON.stringify(achieved));
+  localStorage.setItem('activator_recurring', JSON.stringify(recurringTemplates));
 }
 function load(){
   try{
     tasks = JSON.parse(localStorage.getItem('activator_tasks') || '[]');
     achieved = JSON.parse(localStorage.getItem('activator_achieved') || '[]');
-  }catch(e){ tasks = []; achieved = []; }
+    recurringTemplates = JSON.parse(localStorage.getItem('activator_recurring') || '[]');
+  }catch(e){ tasks = []; achieved = []; recurringTemplates = []; }
+}
+
+function newRecurringTemplateSkeleton(){
+  return {
+    id: 'R-' + Date.now().toString(36),
+    title: '',
+    brand: '',
+    category: 'work',
+    cycle: { type:'weekly', weekday:0, day:1, date:'' },
+    targetQuadrant: null, // null = 未選別
+    enabled: true,
+    lastGeneratedDate: null // 'YYYY-MM-DD' 最後にこの日付までチェック済み
+  };
 }
 
 function newTaskSkeleton(){
@@ -784,6 +893,124 @@ function closeQuadrantList(){
   document.getElementById('topView').classList.remove('hidden');
   document.getElementById('quadrantListView').classList.remove('active');
   renderTop();
+}
+
+/* ---------- 定期タスク管理画面（2026-08-27追加） ---------- */
+let currentEditRecurringId = null;
+
+function openRecurringView(){
+  document.getElementById('topView').classList.add('hidden');
+  document.getElementById('recurringView').classList.add('active');
+  renderRecurringList();
+}
+function closeRecurringView(){
+  document.getElementById('topView').classList.remove('hidden');
+  document.getElementById('recurringView').classList.remove('active');
+  renderTop();
+}
+
+function cycleDescription(cycle){
+  switch(cycle.type){
+    case 'daily': return '毎日';
+    case 'weekly': return `毎週${WEEKDAY_LABELS[cycle.weekday]}曜日`;
+    case 'monthly': return `毎月${cycle.day}日`;
+    case 'once': return `${cycle.date}（1回のみ）`;
+    default: return '—';
+  }
+}
+
+function renderRecurringList(){
+  document.getElementById('recurringCount').textContent = `${recurringTemplates.length}件のテンプレート`;
+  const list = document.getElementById('recurringList');
+  list.innerHTML = '';
+  if(recurringTemplates.length === 0){
+    list.innerHTML = '<div style="font-size:0.85rem; color:var(--text3); font-style:italic;">まだ定期タスクが登録されていません</div>';
+    return;
+  }
+  recurringTemplates.forEach(tpl => {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.style.borderLeftColor = tpl.enabled ? 'var(--accent)' : 'var(--border)';
+    card.style.opacity = tpl.enabled ? '1' : '0.55';
+    card.onclick = () => openRecurringEditModal(tpl.id);
+    const qLabel = tpl.targetQuadrant ? QUADRANTS[tpl.targetQuadrant].label : '未選別カード置き場';
+    card.innerHTML = `
+      <div class="tc-body">
+        <div class="tc-meta">
+          <span class="tc-badge">${escapeHtml(cycleDescription(tpl.cycle))}</span>
+          ${tpl.enabled ? '' : '<span class="tc-badge">停止中</span>'}
+        </div>
+        <div class="tc-title">${escapeHtml(tpl.title || '（無題）')}</div>
+        <div style="font-size:0.75rem; color:var(--text3);">生成先：${escapeHtml(qLabel)}${tpl.brand ? ' ・ ' + escapeHtml(tpl.brand) : ''}</div>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function createNewRecurringTemplate(){
+  const tpl = newRecurringTemplateSkeleton();
+  recurringTemplates.push(tpl);
+  save();
+  openRecurringEditModal(tpl.id);
+}
+
+function openRecurringEditModal(id){
+  currentEditRecurringId = id;
+  const tpl = recurringTemplates.find(x => x.id === id);
+  if(!tpl) return;
+
+  document.getElementById('recTitle').value = tpl.title || '';
+  document.getElementById('recBrand').value = tpl.brand || '';
+  document.getElementById('recCategory').value = tpl.category || 'work';
+  document.getElementById('recCycleType').value = tpl.cycle.type;
+  document.getElementById('recWeekday').value = tpl.cycle.weekday ?? 0;
+  document.getElementById('recMonthDay').value = tpl.cycle.day ?? 1;
+  document.getElementById('recOnceDate').value = tpl.cycle.date || '';
+  document.getElementById('recTargetQuadrant').value = tpl.targetQuadrant || '';
+  document.getElementById('recEnabled').checked = tpl.enabled;
+
+  updateCycleFieldsVisibility();
+  document.getElementById('recurringEditModalOverlay').classList.add('active');
+}
+
+function updateCycleFieldsVisibility(){
+  const type = document.getElementById('recCycleType').value;
+  document.getElementById('recWeeklyField').style.display = type === 'weekly' ? '' : 'none';
+  document.getElementById('recMonthlyField').style.display = type === 'monthly' ? '' : 'none';
+  document.getElementById('recOnceField').style.display = type === 'once' ? '' : 'none';
+}
+
+function closeRecurringEditModal(){
+  document.getElementById('recurringEditModalOverlay').classList.remove('active');
+  currentEditRecurringId = null;
+}
+
+function saveRecurringTemplate(){
+  const tpl = recurringTemplates.find(x => x.id === currentEditRecurringId);
+  if(!tpl) return;
+  tpl.title = document.getElementById('recTitle').value.trim();
+  tpl.brand = document.getElementById('recBrand').value.trim();
+  tpl.category = document.getElementById('recCategory').value;
+  tpl.cycle = {
+    type: document.getElementById('recCycleType').value,
+    weekday: parseInt(document.getElementById('recWeekday').value, 10),
+    day: parseInt(document.getElementById('recMonthDay').value, 10) || 1,
+    date: document.getElementById('recOnceDate').value
+  };
+  tpl.targetQuadrant = document.getElementById('recTargetQuadrant').value || null;
+  tpl.enabled = document.getElementById('recEnabled').checked;
+  save();
+  closeRecurringEditModal();
+  renderRecurringList();
+}
+
+function deleteRecurringTemplate(){
+  if(!confirm('この定期タスクを削除します。よろしいですか？（すでに生成済みのカードは残ります）')) return;
+  recurringTemplates = recurringTemplates.filter(x => x.id !== currentEditRecurringId);
+  save();
+  closeRecurringEditModal();
+  renderRecurringList();
 }
 
 function renderQuadrantList(){
@@ -1135,10 +1362,77 @@ function migrateOrphanTasks(){
   }
 }
 
+/* ---------- 定期タスク生成（2026-08-27追加） ----------
+   アプリを開くたびに実行。各テンプレートについて lastGeneratedDate の翌日から
+   今日までを1日ずつ走査し、サイクル条件に一致する日があればタスクを生成する。
+   長期間開いていなかった場合は、その間の未生成分をすべてまとめて生成する（上限なし、2026-08-27確定）。 */
+function dateStr(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function cycleMatchesDate(cycle, d){
+  switch(cycle.type){
+    case 'daily': return true;
+    case 'weekly': return d.getDay() === Number(cycle.weekday);
+    case 'monthly': return d.getDate() === Number(cycle.day);
+    case 'once': return dateStr(d) === cycle.date;
+    default: return false;
+  }
+}
+function generateRecurringTasks(){
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  let totalGenerated = 0;
+
+  recurringTemplates.forEach(tpl => {
+    if(!tpl.enabled) return;
+
+    // 起点：前回チェック済み日の翌日。未設定なら今日だけをチェック（初回登録時に過去分を大量生成しないため）
+    let startDate;
+    if(tpl.lastGeneratedDate){
+      startDate = new Date(tpl.lastGeneratedDate);
+      startDate.setDate(startDate.getDate() + 1);
+    }else{
+      startDate = new Date(today);
+    }
+    if(startDate > today){ return; }
+
+    const cursor = new Date(startDate);
+    let generatedForThisTemplate = false;
+    while(cursor <= today){
+      if(cycleMatchesDate(tpl.cycle, cursor)){
+        const t = newTaskSkeleton();
+        t.title = tpl.title;
+        t.brand = tpl.brand;
+        t.category = tpl.category;
+        if(tpl.targetQuadrant){
+          t.quadrant = tpl.targetQuadrant;
+          t.status = 'active';
+        } // targetQuadrantがnullなら未選別のまま（newTaskSkeletonの初期値）
+        tasks.push(t);
+        totalGenerated++;
+        generatedForThisTemplate = true;
+        if(tpl.cycle.type === 'once'){
+          tpl.enabled = false; // 単発は1回生成したら自動的に無効化
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    tpl.lastGeneratedDate = dateStr(today);
+  });
+
+  if(totalGenerated > 0){
+    save();
+    console.log(`[activator] 定期タスクを${totalGenerated}件生成しました`);
+  }
+}
+
 /* ---------- 初期化 ---------- */
 load();
 migrateOrphanTasks();
+generateRecurringTasks();
 renderTop();
+
+
 </script>
 </body>
 </html>
