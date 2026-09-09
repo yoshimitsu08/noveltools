@@ -9166,6 +9166,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
   let currentSelectorChapterId = null;
   let selectorEditingCardId = null;
   let selectorEditingDraft = '';
+  // 2026-09-09新設：確定操作で句点分割が発生したカードの累計件数。confirmSelectorEdit内で
+  // 加算し、確定処理の最後にalert通知した後0にリセットする（1回の確定操作は基本1カードだが、
+  // 将来の呼び出し経路変化に備えて累計方式にしている）
+  let selectorSplitToastCount = 0;
   let selectorLongPressTimer = null;
   let selectorLongPressFired = false;
   // 2026-08-29廃止：表示中の系列IDは章ごとのデータ（entry.selector.viewingSeriesId）で管理するよう変更。
@@ -9842,17 +9846,65 @@ h1 .mark { color:var(--accent); font-style:italic; }
     afterSelectorMutate();
   }
 
+  // 2026-09-09新設：テキストを「括弧の外側にある句点（。）」で分割する純粋関数。
+  // 「」（）『』はセリフ・引用として扱い、その内側の句点は区切りとしてカウントしない。
+  // 括弧の開閉はカウンタ方式（開き括弧のいずれかで+1、閉じ括弧のいずれかで-1、0の間だけが「外側」）。
+  // 閉じ忘れ（カウンタが最後まで0に戻らない）が起きた場合、それ以降の句点は自動的に「内側」扱いとなり
+  // 分割対象から外れる。特別な例外処理は不要（スイッチ方式の自然な副作用として安全側に倒れる設計）。
+  // 分割結果が1つ（＝区切りが見つからなかった）場合は、トリム以外の変更をせず元のテキストのまま返す。
+  const SELECTOR_OPEN_BRACKETS = '「（『';
+  const SELECTOR_CLOSE_BRACKETS = '」）』';
+  function splitTextBySentences(text){
+    if(!text) return [text];
+    const result = [];
+    let depth = 0;
+    let start = 0;
+    for(let i = 0; i < text.length; i++){
+      const ch = text[i];
+      if(SELECTOR_OPEN_BRACKETS.includes(ch)){
+        depth++;
+      } else if(SELECTOR_CLOSE_BRACKETS.includes(ch)){
+        if(depth > 0) depth--;
+      } else if(ch === '。' && depth === 0){
+        result.push(text.slice(start, i + 1));
+        start = i + 1;
+      }
+    }
+    if(start < text.length){
+      result.push(text.slice(start));
+    }
+    // 前後の空白・改行をトリムし、トリムの結果空になった要素（例：末尾の改行のみだった等）は除外
+    const trimmed = result.map(s => s.trim()).filter(s => s.length > 0);
+    return trimmed.length > 0 ? trimmed : [text.trim()];
+  }
+
   function confirmSelectorEdit(seriesId, cardId){
     const entry = getSelectorEntry();
     const selector = ensureSelector(entry);
     const arr = selector.seriesCards[seriesId];
     if(arr){
-      selector.seriesCards[seriesId] = arr.map(c => c.id === cardId ? { ...c, text: selectorEditingDraft, selected: true } : c);
+      const parts = splitTextBySentences(selectorEditingDraft);
+      if(parts.length > 1){
+        // 分割対象カードを、同じ位置に分割後の複数カードとして展開する
+        const newCards = parts.map((part, i) => ({
+          id: i === 0 ? cardId : selectorUid('sc'), // 先頭は元IDを維持（採用状態・しおり等の紐づけを保つため）
+          text: part,
+          selected: true
+        }));
+        selector.seriesCards[seriesId] = arr.flatMap(c => c.id === cardId ? newCards : [c]);
+        selectorSplitToastCount = (selectorSplitToastCount || 0) + 1;
+      } else {
+        selector.seriesCards[seriesId] = arr.map(c => c.id === cardId ? { ...c, text: selectorEditingDraft, selected: true } : c);
+      }
     }
     markCardAsLastEdited(entry, cardId);
     selectorEditingCardId = null;
     selectorEditingDraft = '';
     afterSelectorMutate();
+    if(selectorSplitToastCount){
+      alert(selectorSplitToastCount + '件、カードを分割しました');
+      selectorSplitToastCount = 0;
+    }
   }
 
   // 系列seriesIdのカード配列 index 位置に、新規空カードを挿入して編集モードに入る
