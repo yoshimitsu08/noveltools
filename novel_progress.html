@@ -3613,10 +3613,14 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <div class="chapter-note" style="margin-bottom:14px;">
         .txt / .md ファイルを読み込んで編集し、書き出せる簡易エディタです。内容は保存されません（モーダルを閉じると消えます）。
       </div>
-      <input type="file" id="textEditorFileInput" accept=".txt,.md,text/plain,text/markdown" style="display:none;">
+      <input type="file" id="textEditorFileInput" accept=".txt,.md,.novel,text/plain,text/markdown" style="display:none;">
       <div style="display:flex; gap:8px; margin-bottom:10px;">
         <button type="button" class="btn" id="textEditorLoadBtn" style="flex:1;">📂 ファイルを開く</button>
         <button type="button" class="btn" id="textEditorClearBtn" style="flex:1;">🗑 クリア</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <button type="button" class="btn" id="textEditorCopyBtn" style="flex:1;">📋 一括コピー</button>
+        <button type="button" class="btn" id="textEditorPasteBtn" style="flex:1;">📥 貼り付け</button>
       </div>
       <textarea id="textEditorTextarea" class="section-textarea" placeholder="ここに直接入力するか、上のボタンからファイルを読み込んでください" style="min-height:320px; resize:vertical; width:100%;"></textarea>
       <div class="manuscript-wordcount-live" id="textEditorWordcount" style="text-align:right; margin-top:8px;">0 字</div>
@@ -7203,12 +7207,27 @@ h1 .mark { color:var(--accent); font-style:italic; }
   document.getElementById('textEditorLoadBtn').onclick = () => {
     document.getElementById('textEditorFileInput').click();
   };
+  // .novelファイル（AIのべりすと形式）から本文フィールドのみを抽出する。
+  // 仕様：<|endofsection|>区切りの可変長フィールド列で、フィールド数・構成は作品により変動するが、
+  // 実サンプル確認の結果、index 0 = 本文（改行は<br>表現）は一貫していたためそこのみ採用する。
+  // 想定外の形式（区切りが見つからない＝分割後1要素以下）の場合は安全側に倒し、生データをそのまま表示して警告する。
+  function parseNovelFileContent(raw){
+    const parts = raw.split('<|endofsection|>');
+    if(parts.length <= 1){
+      alert('.novelファイルの形式が想定と異なるため、本文の自動抽出ができませんでした。読み込んだ内容をそのまま表示しますので、必要な部分だけ手動でご利用ください。');
+      return raw;
+    }
+    return parts[0].replace(/<br>/g, '\n');
+  }
+
   document.getElementById('textEditorFileInput').onchange = (e) => {
     const file = e.target.files[0];
     if(!file) return;
+    const isNovelFile = /\.novel$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = () => {
-      document.getElementById('textEditorTextarea').value = reader.result;
+      const raw = reader.result;
+      document.getElementById('textEditorTextarea').value = isNovelFile ? parseNovelFileContent(raw) : raw;
       updateTextEditorWordcount();
     };
     reader.onerror = () => {
@@ -7222,6 +7241,28 @@ h1 .mark { color:var(--accent); font-style:italic; }
     if(!confirm('編集中の内容をクリアします。よろしいですか？')) return;
     document.getElementById('textEditorTextarea').value = '';
     updateTextEditorWordcount();
+  };
+
+  document.getElementById('textEditorCopyBtn').onclick = async () => {
+    const text = document.getElementById('textEditorTextarea').value;
+    if(!text){ alert('本文が空です。'); return; }
+    try{
+      await navigator.clipboard.writeText(text);
+    }catch(err){
+      alert('クリップボードへのコピーに失敗しました。ブラウザの権限設定をご確認ください。');
+    }
+  };
+
+  document.getElementById('textEditorPasteBtn').onclick = async () => {
+    try{
+      const pasted = await navigator.clipboard.readText();
+      if(!pasted){ alert('クリップボードが空です。'); return; }
+      const ta = document.getElementById('textEditorTextarea');
+      ta.value = ta.value ? (ta.value + '\n' + pasted) : pasted;
+      updateTextEditorWordcount();
+    }catch(err){
+      alert('クリップボードからの貼り付けに失敗しました。ブラウザの権限設定をご確認ください。');
+    }
   };
 
   function textEditorFileName(ext){
