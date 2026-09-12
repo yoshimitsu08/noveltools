@@ -1004,6 +1004,21 @@ h1 .mark { color:var(--accent); font-style:italic; }
   display:flex; align-items:center; justify-content:center;
 }
 .ideabook-list-card .iblc-cover img { width:100%; height:100%; object-fit:cover; }
+
+/* 2026-08-29新設：ネタ帳詳細画面、タイトル横の小さいカバー画像（タップで変更） */
+.ideabook-editor-cover {
+  width:40px; height:40px; flex-shrink:0;
+  border-radius:6px;
+  overflow:hidden;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  position:relative;
+}
+.ideabook-editor-cover img { width:100%; height:100%; object-fit:cover; }
+.ideabook-editor-cover .no-cover-glyph { font-size:1.1rem; color:var(--text3); }
+.ideabook-editor-cover input[type="file"] { display:none; }
 .ideabook-list-card .iblc-body {
   flex:1; min-width:0;
   display:flex; flex-direction:column; justify-content:center; gap:4px;
@@ -3262,6 +3277,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       </div>
       <div class="dropdown-menu" id="ideaBookListDropdown" style="top:52px;">
         <button type="button" class="dropdown-item" id="ideaBookCreateBtn">＋ 新規ネタ帳を作成</button>
+        <button type="button" class="dropdown-item" id="ideaBookImportBtn">📥 ネタ帳をインポート</button>
+        <input type="file" id="ideaBookImportFileInput" accept="application/json" style="display:none;">
         <div class="dropdown-divider"></div>
         <div style="padding:8px 16px 4px; font-size:0.75rem; color:var(--text3);">メモ帳の行数</div>
         <div style="display:flex; align-items:center; gap:8px; padding:4px 16px 10px;">
@@ -3296,13 +3313,22 @@ h1 .mark { color:var(--accent); font-style:italic; }
 <div class="modal-overlay" id="ideabookEditorModalOverlay">
   <div class="modal">
     <div class="modal-header" style="position:relative;">
-      <h2 style="color:#9b8ac4;" id="ideabookEditorTitle">ネタ帳</h2>
+      <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+        <div class="ideabook-editor-cover" id="ideabookEditorCoverUpload" title="タップして画像を変更">
+          <img id="ideabookEditorCoverPreview" style="display:none;">
+          <span class="no-cover-glyph" id="ideabookEditorCoverGlyph">✒</span>
+          <input type="file" id="ideabookEditorCoverFileInput" accept="image/*">
+        </div>
+        <h2 style="color:#9b8ac4; min-width:0;" id="ideabookEditorTitle" title="タップしてタイトルを編集">ネタ帳</h2>
+        <input type="text" id="ideabookEditorTitleInput" style="display:none;">
+      </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <button type="button" class="hamburger-btn" id="ideabookEditorHamburgerBtn">☰</button>
         <button class="modal-close" id="ideabookEditorModalClose">×</button>
       </div>
       <div class="dropdown-menu" id="ideabookEditorDropdown" style="top:52px;">
         <button type="button" class="dropdown-item" id="ideabookOpenSeedImportBtn">＋ ヒラメキの種を追加</button>
+        <button type="button" class="dropdown-item" id="ideabookExportBtn">📤 このネタ帳をエクスポート</button>
       </div>
     </div>
 
@@ -5183,6 +5209,44 @@ h1 .mark { color:var(--accent); font-style:italic; }
     reader.readAsText(file);
   }
 
+  // 2026-08-29新設：ネタ帳専用インポート（作品用importProjectFromFileの軽量版。
+  // ネタ帳は sections/manuscript 等の初期化が不要なため、専用関数として分離）
+  function importIdeabookFromFile(file){
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      let payload;
+      try {
+        payload = JSON.parse(e.target.result);
+      } catch(_e){
+        alert('ファイルを読み込めませんでした。正しいエクスポートファイルか確認してください。');
+        return;
+      }
+      const b = payload && payload.project ? payload.project : payload;
+      if(!b || typeof b !== 'object' || !('title' in b)){
+        alert('ネタ帳データとして認識できませんでした。');
+        return;
+      }
+      if(projectKind(b) !== 'ideabook'){
+        alert('これはネタ帳のエクスポートファイルではないようです（通常作品のファイルの可能性があります）。');
+        return;
+      }
+      const imported = JSON.parse(JSON.stringify(b));
+      imported.id = uid();
+      imported.title = (imported.title || '無題のネタ帳') + '（インポート）';
+      imported.createdAt = Date.now();
+      imported.updatedAt = Date.now();
+      if(!imported.ideaSeeds) imported.ideaSeeds = [];
+      if(imported.introText === undefined) imported.introText = '';
+      if(imported.cover === undefined) imported.cover = null;
+
+      projects.push(imported);
+      save();
+      renderIdeabookListCards();
+      alert(`「${imported.title}」としてインポートしました。`);
+    };
+    reader.readAsText(file);
+  }
+
   // 2026-08-28削除：exportIdeaSeeds/importIdeaSeedsFromFile（種の全件エクスポート/インポート）は
   // ネタ帳Phase2再設計に伴い呼び出し元（旧ハンバーガーメニュー）が無くなったため削除。
   // 必要になった場合は、対象を「currentIdeabook().ideaSeeds」に変更した上で作り直すこと。
@@ -6600,11 +6664,26 @@ h1 .mark { color:var(--accent); font-style:italic; }
       </div>`).join('');
   }
 
+  function updateIdeabookCoverPreview(book){
+    const img = document.getElementById('ideabookEditorCoverPreview');
+    const glyph = document.getElementById('ideabookEditorCoverGlyph');
+    if(book && book.cover){
+      img.src = book.cover;
+      img.style.display = 'block';
+      glyph.style.display = 'none';
+    } else {
+      img.style.display = 'none';
+      img.src = '';
+      glyph.style.display = 'block';
+    }
+  }
+
   function openIdeabookEditor(bookId){
     currentIdeabookEditorId = bookId;
     const book = currentIdeabook();
     if(!book) return;
     document.getElementById('ideabookEditorTitle').textContent = book.title || '無題のネタ帳';
+    updateIdeabookCoverPreview(book);
     ideaSeedSearchQuery = '';
     document.getElementById('ideaSeedSearchInput').value = '';
     renderIdeabookSeedsList();
@@ -6682,6 +6761,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
       save();
       renderIdeabookListCards();
     };
+    document.getElementById('ideaBookImportBtn').onclick = () => {
+      document.getElementById('ideaBookListDropdown').classList.remove('active');
+      document.getElementById('ideaBookImportFileInput').click();
+    };
+    document.getElementById('ideaBookImportFileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if(file) importIdeabookFromFile(file);
+      e.target.value = ''; // 同じファイルを連続で選び直せるようにリセット
+    });
     document.getElementById('memoPadRowsInput').onchange = (e) => {
       let rows = parseInt(e.target.value, 10);
       if(!rows || rows < 1) rows = 1;
@@ -6715,6 +6803,26 @@ h1 .mark { color:var(--accent); font-style:italic; }
       document.getElementById('ideabookEditorDropdown').classList.remove('active');
       openSeedImportModal();
     };
+    document.getElementById('ideabookExportBtn').onclick = () => {
+      document.getElementById('ideabookEditorDropdown').classList.remove('active');
+      const book = currentIdeabook();
+      if(book) exportProject(book);
+    };
+    document.getElementById('ideabookEditorCoverUpload').onclick = () => {
+      document.getElementById('ideabookEditorCoverFileInput').click();
+    };
+    document.getElementById('ideabookEditorCoverFileInput').addEventListener('change', (e) => {
+      const book = currentIdeabook();
+      const file = e.target.files[0];
+      if(!book || !file) return;
+      handleCoverFile(file, (dataUrl) => {
+        book.cover = dataUrl;
+        book.updatedAt = Date.now();
+        save();
+        updateIdeabookCoverPreview(book);
+      });
+      e.target.value = '';
+    });
     document.getElementById('ideaSeedSearchInput').addEventListener('input', (e) => {
       ideaSeedSearchQuery = e.target.value;
       renderIdeabookSeedsList();
@@ -6755,6 +6863,50 @@ h1 .mark { color:var(--accent); font-style:italic; }
       renderIdeabookSeedsList();
       closeSeedImportModal();
     };
+
+    // タイトルのインライン編集（タップ→テキストボックス化、Enterで確定、フォーカス外れはキャンセル）
+    // 2026-08-29新設：作品詳細画面(setupDetailTitleInlineEdit)と同じパターン
+    (function setupIdeabookTitleInlineEdit(){
+      const titleEl = document.getElementById('ideabookEditorTitle');
+      const inputEl = document.getElementById('ideabookEditorTitleInput');
+      let editing = false;
+
+      function startEdit(){
+        const book = currentIdeabook();
+        if(!book || editing) return;
+        editing = true;
+        inputEl.value = book.title || '';
+        titleEl.style.display = 'none';
+        inputEl.style.display = 'block';
+        inputEl.focus();
+        inputEl.select();
+      }
+      function cancelEdit(){
+        editing = false;
+        inputEl.style.display = 'none';
+        titleEl.style.display = '';
+      }
+      function commitEdit(){
+        const book = currentIdeabook();
+        if(!book){ cancelEdit(); return; }
+        const trimmed = inputEl.value.trim();
+        if(!trimmed){ cancelEdit(); return; } // 空欄なら変更を破棄
+        book.title = trimmed;
+        book.updatedAt = Date.now();
+        save();
+        titleEl.textContent = book.title;
+        editing = false;
+        inputEl.style.display = 'none';
+        titleEl.style.display = '';
+      }
+
+      titleEl.addEventListener('click', startEdit);
+      inputEl.addEventListener('keydown', (e) => {
+        if(e.key === 'Enter'){ e.preventDefault(); commitEdit(); }
+        else if(e.key === 'Escape'){ e.preventDefault(); cancelEdit(); }
+      });
+      inputEl.addEventListener('blur', cancelEdit);
+    })();
   }
 
   // 2026-08-23新設：使い方ガイド
