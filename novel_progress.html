@@ -1028,6 +1028,22 @@ h1 .mark { color:var(--accent); font-style:italic; }
   padding:24px 0; font-size:0.85rem;
 }
 
+/* 2026-08-29追記：メモ帳が周囲から白く浮いて見える不具合修正。他の入力欄(.field textarea)と同じ配色に統一 */
+#memoPadTextarea {
+  background:var(--bg3);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:10px 12px;
+  font-family:var(--font-ui);
+  font-size:0.78rem;
+  line-height:1.5;
+}
+#memoPadTextarea:focus {
+  outline:none;
+  border-color:var(--accent);
+}
+
 /* 2026-08-28新設：PC版のみ、ネタ帳一覧モーダルをメモ帳(左)・本一覧(右)の2ペインにする */
 @media (min-width: 860px) {
   #ideaBookListModalOverlay .modal-body {
@@ -1189,8 +1205,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 }
 .idea-seed-random-id {
   font-family:var(--font-ui);
-  font-size:0.55rem;
-  color:var(--text3);
+  font-size:0.7rem;
+  color:var(--text2);
   margin-left:8px;
   letter-spacing:0.03em;
 }
