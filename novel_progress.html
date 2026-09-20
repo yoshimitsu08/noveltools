@@ -800,6 +800,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
   padding:20px 12px 40px;
 }
 .modal-overlay.active { display:flex; }
+/* 2026-09-20新設：カード詳細モーダルのみ、背景の暗さをユーザー調整可能にする。
+   --detail-overlay-alpha はJS側でCSSカスタムプロパティとして設定（デフォルト0.75、他モーダルには影響しない）。 */
+#detailModalOverlay {
+  background:rgba(10,9,7, var(--detail-overlay-alpha, 0.75));
+}
 .modal {
   background:var(--bg2);
   border:1px solid var(--border);
@@ -2869,6 +2874,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       <button type="button" class="dropdown-item" id="menuLongPressBtn">⏱ 操作感の調整</button>
       <button type="button" class="dropdown-item" id="menuThemeBtn">🎨 テーマカラーを変更</button>
       <button type="button" class="dropdown-item" id="menuBookmarkColorBtn">🔖 しおり色を調整</button>
+      <button type="button" class="dropdown-item" id="menuDetailOverlayBtn">🌑 詳細画面の背景の暗さを調整</button>
       <button type="button" class="dropdown-item" id="menuStorageDetailBtn">📊 ストレージ詳細</button>
       <div class="dropdown-divider"></div>
       <button type="button" class="dropdown-item" id="menuGithubSetupBtn">☁️ GitHub保存の設定</button>
@@ -3637,6 +3643,35 @@ h1 .mark { color:var(--accent); font-style:italic; }
     <div class="modal-footer">
       <button class="btn" id="bookmarkColorResetBtn">デフォルトに戻す</button>
       <button class="btn primary" id="bookmarkColorSaveBtn" style="flex:1;">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Detail Overlay Darkness Modal ============ -->
+<div class="modal-overlay" id="detailOverlayModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>詳細画面の背景の暗さ調整</h2>
+      <button class="modal-close" id="detailOverlayModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="chapter-note" style="margin-bottom:14px;">
+        カード詳細を開いたときに、リールの上に重なる暗い背景（オーバーレイ）の濃さを調整できます。他のモーダル（設定・GitHub同期など）には影響しません。
+      </div>
+      <div class="field">
+        <label>暗さ：<span id="detailOverlayAlphaLabel">75%</span></label>
+        <input type="range" id="detailOverlayAlphaInput" min="0" max="100" step="1" style="width:100%;">
+      </div>
+      <div class="field">
+        <label>プレビュー</label>
+        <div style="position:relative; height:120px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:linear-gradient(135deg, var(--bg3) 25%, var(--accent) 25%, var(--accent) 50%, var(--bg3) 50%, var(--bg3) 75%, var(--accent) 75%); background-size:24px 24px;">
+          <div id="detailOverlayAlphaPreview" style="position:absolute; inset:0; background:rgba(10,9,7,0.75); display:flex; align-items:center; justify-content:center; color:var(--text); font-family:var(--font-ui); font-size:0.7rem;">サンプル表示</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="detailOverlayResetBtn">デフォルトに戻す</button>
+      <button class="btn primary" id="detailOverlaySaveBtn" style="flex:1;">保存</button>
     </div>
   </div>
 </div>
@@ -4599,6 +4634,30 @@ h1 .mark { color:var(--accent); font-style:italic; }
     bookmarkBorderColor = border;
     bookmarkFillColor = fill;
     try { localStorage.setItem(BOOKMARK_COLOR_STORAGE_KEY, JSON.stringify({border, fill})); } catch(_e){ /* ignore */ }
+  }
+
+  // ---------- Detail modal overlay darkness customization ----------
+  const DETAIL_OVERLAY_ALPHA_STORAGE_KEY = 'manuscript_detail_overlay_alpha_v1';
+  const DEFAULT_DETAIL_OVERLAY_ALPHA = 0.75;
+  let detailOverlayAlpha = DEFAULT_DETAIL_OVERLAY_ALPHA;
+
+  function loadDetailOverlayAlpha(){
+    try {
+      const raw = localStorage.getItem(DETAIL_OVERLAY_ALPHA_STORAGE_KEY);
+      if(raw !== null){
+        const parsed = parseFloat(raw);
+        if(!isNaN(parsed) && parsed >= 0 && parsed <= 1) detailOverlayAlpha = parsed;
+      }
+    } catch(_e){ /* keep default */ }
+    applyDetailOverlayAlpha();
+  }
+  function applyDetailOverlayAlpha(){
+    document.documentElement.style.setProperty('--detail-overlay-alpha', String(detailOverlayAlpha));
+  }
+  function saveDetailOverlayAlpha(alpha){
+    detailOverlayAlpha = alpha;
+    applyDetailOverlayAlpha();
+    try { localStorage.setItem(DETAIL_OVERLAY_ALPHA_STORAGE_KEY, String(alpha)); } catch(_e){ /* ignore */ }
   }
 
   // ---------- Device name (per-browser, independent of project data) ----------
@@ -7512,6 +7571,36 @@ h1 .mark { color:var(--accent); font-style:italic; }
     saveBookmarkColor(border, fill);
     document.getElementById('bookmarkColorModalOverlay').classList.remove('active');
   };
+
+  // ---------- Detail overlay darkness modal ----------
+  function updateDetailOverlayAlphaPreview(){
+    const pct = parseInt(document.getElementById('detailOverlayAlphaInput').value, 10);
+    document.getElementById('detailOverlayAlphaLabel').textContent = pct + '%';
+    document.getElementById('detailOverlayAlphaPreview').style.background = `rgba(10,9,7,${pct / 100})`;
+  }
+  document.getElementById('menuDetailOverlayBtn').onclick = () => {
+    document.getElementById('dashDropdown').classList.remove('active');
+    document.getElementById('detailOverlayAlphaInput').value = Math.round(detailOverlayAlpha * 100);
+    updateDetailOverlayAlphaPreview();
+    document.getElementById('detailOverlayModalOverlay').classList.add('active');
+  };
+  document.getElementById('detailOverlayModalClose').onclick = () => {
+    document.getElementById('detailOverlayModalOverlay').classList.remove('active');
+  };
+  document.getElementById('detailOverlayModalOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'detailOverlayModalOverlay') document.getElementById('detailOverlayModalOverlay').classList.remove('active');
+  });
+  document.getElementById('detailOverlayAlphaInput').addEventListener('input', updateDetailOverlayAlphaPreview);
+  document.getElementById('detailOverlayResetBtn').onclick = () => {
+    document.getElementById('detailOverlayAlphaInput').value = Math.round(DEFAULT_DETAIL_OVERLAY_ALPHA * 100);
+    updateDetailOverlayAlphaPreview();
+  };
+  document.getElementById('detailOverlaySaveBtn').onclick = () => {
+    const pct = parseInt(document.getElementById('detailOverlayAlphaInput').value, 10);
+    saveDetailOverlayAlpha(pct / 100);
+    document.getElementById('detailOverlayModalOverlay').classList.remove('active');
+  };
+
   document.getElementById('menuStorageDetailBtn').onclick = () => {
     document.getElementById('dashDropdown').classList.remove('active');
     updateStorageUsageDisplay();
@@ -11492,6 +11581,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
   loadIdeaSeedRotateMs();
   loadHeaderRotateMs();
   loadBookmarkColor();
+  loadDetailOverlayAlpha();
   initIdeabookModalEvents();
   initReelInteraction();
   initCoverPositionDrag();
