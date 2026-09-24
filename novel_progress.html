@@ -1258,6 +1258,61 @@ h1 .mark { color:var(--accent); font-style:italic; }
   flex-shrink:0;
 }
 
+/* 2026-09-24新設：ネタ帳「この種から作品を作る」用の選択UI（種一覧専用、.parse-item本体には影響させない） */
+.idea-seed-pick-item {
+  cursor:pointer;
+  user-select:none;
+  transition:border-color .15s, background .15s;
+}
+.idea-seed-pick-item:hover { border-color:#9b8ac4; }
+.idea-seed-pick-item.selected {
+  border-color:#9b8ac4;
+  background:rgba(155,138,196,0.12);
+}
+.idea-seed-pick-checkbox {
+  width:16px;
+  height:16px;
+  flex-shrink:0;
+  accent-color:#9b8ac4;
+  pointer-events:none; /* クリックはカード全体で拾う。二重発火防止 */
+}
+.idea-seed-create-bar {
+  position:sticky;
+  bottom:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:10px 14px;
+  margin-top:4px;
+}
+.idea-seed-create-bar .count {
+  font-family:var(--font-ui);
+  font-size:0.72rem;
+  color:var(--text2);
+}
+.idea-seed-create-bar button {
+  font-family:var(--font-ui);
+  font-size:0.75rem;
+  padding:8px 16px;
+  border-radius:4px;
+  border:1px solid #9b8ac4;
+  background:#9b8ac4;
+  color:var(--bg);
+  font-weight:bold;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.idea-seed-create-bar button:disabled {
+  background:transparent;
+  color:var(--text3);
+  border-color:var(--border);
+  cursor:not-allowed;
+}
+
 /* 2026-08-23新設：テーマカラー選択モーダルのパーツ */
 .theme-option {
   display:flex;
@@ -3350,6 +3405,10 @@ h1 .mark { color:var(--accent); font-style:italic; }
         <input type="text" id="ideaSeedSearchInput" placeholder="🔍 種を検索（キーワード）">
       </div>
       <div id="ideaSeedsList"></div>
+      <div class="idea-seed-create-bar">
+        <span class="count" id="ideaSeedCreateCount">0件選択中</span>
+        <button type="button" id="ideaSeedCreateProjectBtn" disabled>選択した種から新規作品を作成</button>
+      </div>
     </div>
   </div>
 </div>
@@ -6696,9 +6755,39 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   // ---- 編集画面（1冊の中身） ----
   let currentIdeabookEditorId = null;
+  // 2026-09-24新設：「この種(複数可)から新規作品を作る」機能で使う選択状態。
+  // ネタ帳エディタを開き直すたびにクリアする（openIdeabookEditor内でresetIdeaSeedSelection()を呼ぶ）
+  let selectedIdeaSeedIds = new Set();
 
   function currentIdeabook(){
     return projects.find(p => p.id === currentIdeabookEditorId);
+  }
+
+  function resetIdeaSeedSelection(){
+    selectedIdeaSeedIds = new Set();
+    updateIdeaSeedCreateBar();
+  }
+
+  function updateIdeaSeedCreateBar(){
+    const countEl = document.getElementById('ideaSeedCreateCount');
+    const btn = document.getElementById('ideaSeedCreateProjectBtn');
+    if(!countEl || !btn) return;
+    const n = selectedIdeaSeedIds.size;
+    countEl.textContent = `${n}件選択中`;
+    btn.disabled = (n === 0); // 安全側：0件のときはボタン自体を押せなくする
+  }
+
+  function toggleIdeaSeedSelection(seedId){
+    if(selectedIdeaSeedIds.has(seedId)) selectedIdeaSeedIds.delete(seedId);
+    else selectedIdeaSeedIds.add(seedId);
+    updateIdeaSeedCreateBar();
+    // チェック状態の見た目だけを再描画（検索絞り込み等はやり直さない）
+    document.querySelectorAll('#ideaSeedsList .idea-seed-pick-item').forEach(el => {
+      const on = selectedIdeaSeedIds.has(el.dataset.seedId);
+      el.classList.toggle('selected', on);
+      const cb = el.querySelector('.idea-seed-pick-checkbox');
+      if(cb) cb.checked = on;
+    });
   }
 
   function renderIdeabookSeedsList(){
@@ -6708,6 +6797,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const seeds = book.ideaSeeds || [];
     if(seeds.length === 0){
       wrap.innerHTML = '<div class="chapter-tabs-empty">まだ種が登録されていません</div>';
+      updateIdeaSeedCreateBar();
       return;
     }
     const q = ideaSeedSearchQuery.trim().toLowerCase();
@@ -6715,12 +6805,44 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ? seeds.filter(s => s.text.toLowerCase().includes(q) || (s.id||'').toLowerCase().includes(q))
       : seeds;
     wrap.innerHTML = filtered.map(s => `
-      <div class="parse-item">
+      <div class="parse-item idea-seed-pick-item${selectedIdeaSeedIds.has(s.id) ? ' selected' : ''}" data-seed-id="${escapeHTML(s.id||'')}">
         <div class="parse-item-head">
+          <input type="checkbox" class="idea-seed-pick-checkbox" ${selectedIdeaSeedIds.has(s.id) ? 'checked' : ''}>
           <span class="parse-item-tag" style="background:#9b8ac4;">${escapeHTML(s.id||'')}</span>
         </div>
         <div class="parse-item-body">${escapeHTML(s.text)}</div>
       </div>`).join('');
+    wrap.querySelectorAll('.idea-seed-pick-item').forEach(el => {
+      el.onclick = () => toggleIdeaSeedSelection(el.dataset.seedId);
+    });
+    updateIdeaSeedCreateBar();
+  }
+
+  // 2026-09-24新設：選択した種（単体・複数どちらも可）から新規作品を作り、
+  // 種の本文をそのまま連結してroughMemoに流し込む。
+  function createProjectFromSelectedIdeaSeeds(){
+    // 安全側：disabledボタン経由以外（将来のショートカット等）から呼ばれた場合の保険
+    if(selectedIdeaSeedIds.size === 0) return;
+    const book = currentIdeabook();
+    if(!book) return;
+    const seeds = (book.ideaSeeds || []).filter(s => selectedIdeaSeedIds.has(s.id));
+    if(seeds.length === 0) return;
+
+    const title = prompt('作品タイトルを入力してください');
+    if(title === null) return; // キャンセル
+    const trimmed = title.trim();
+    if(!trimmed){ alert('タイトルを入力してください'); return; }
+
+    const p = newProjectSkeleton();
+    p.title = trimmed;
+    p.roughMemo = seeds.map(s => s.text).join('\n\n');
+    projects.push(p);
+    save();
+    renderGrid();
+
+    resetIdeaSeedSelection();
+    closeIdeabookEditor();
+    openDetail(p.id);
   }
 
   function updateIdeabookCoverPreview(book){
@@ -6745,6 +6867,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     updateIdeabookCoverPreview(book);
     ideaSeedSearchQuery = '';
     document.getElementById('ideaSeedSearchInput').value = '';
+    resetIdeaSeedSelection(); // 開き直すたびに前回の選択を引きずらない
     renderIdeabookSeedsList();
     document.getElementById('ideabookEditorModalOverlay').classList.add('active');
     startIdeaSeedRotation(() => book.ideaSeeds || [], 'ideabookEditorRandomText', 'ideabookEditorRandomId');
@@ -6886,6 +7009,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
       ideaSeedSearchQuery = e.target.value;
       renderIdeabookSeedsList();
     });
+    document.getElementById('ideaSeedCreateProjectBtn').onclick = createProjectFromSelectedIdeaSeeds;
     document.getElementById('ideabookEditorRandomBox').onclick = () => {
       const book = currentIdeabook();
       if(!book) return;
