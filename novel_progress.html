@@ -6835,7 +6835,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const p = newProjectSkeleton();
     p.title = trimmed;
-    p.roughMemo = seeds.map(s => s.text).join('\n\n');
+    p.memo = seeds.map(s => s.text).join('\n\n'); // 2026-09-24修正：実際に使われるのはroughMemoではなくmemo（詳細画面「メモ」欄）。プロット作成前はここがラフメモ扱いになる運用
     projects.push(p);
     save();
     renderGrid();
