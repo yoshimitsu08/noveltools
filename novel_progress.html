@@ -276,6 +276,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
   white-space:nowrap;
 }
 .storage-usage-text.warn { color:var(--danger); }
+.storage-breakdown-text {
+  font-size:0.7rem;
+  color:var(--text3);
+  line-height:1.6;
+  margin-top:6px;
+}
 
 /* ---------- Storage detail modal ---------- */
 .storage-detail-row {
@@ -3019,6 +3025,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
           <div class="storage-usage-track" style="max-width:none;"><div class="storage-usage-fill" id="storageModalFill"></div></div>
           <span class="storage-usage-text" id="storageModalText">0 KB / 5 MB</span>
         </div>
+        <div class="storage-breakdown-text" id="storageBreakdownText"></div>
       </div>
       <div class="detail-section">
         <div class="detail-section-title">作品ごとの内訳</div>
@@ -3358,7 +3365,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     <div class="modal-body">
       <div>
-        <div style="font-size:0.75rem; color:var(--text3); margin-bottom:6px;">メモ帳</div>
+        <div style="font-size:0.75rem; color:var(--text3); margin-bottom:6px;">メモ帳<span id="memoPadSaveWarning" style="display:none; margin-left:8px; color:var(--danger);">⚠ 保存できていません。内容をコピーして退避してください</span></div>
         <textarea id="memoPadTextarea" placeholder="思いついたネタを書き留める" style="width:100%; resize:none; box-sizing:border-box;"></textarea>
       </div>
 
@@ -5167,6 +5174,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
     return byteLengthOfString(JSON.stringify(p));
   }
 
+  // 注意：名前に反して「作品データのキー（STORAGE_KEY）1本だけ」のサイズを返す。
+  // ネタ帳もprojects配列に含まれるため、この値は「作品・ネタ帳」の合計になる。
   function getTotalStorageBytes(){
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -5176,8 +5185,27 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }
   }
 
+  // 2026-09-24新設：同じオリジン（同じサイト）のlocalStorage全体の使用量。
+  // localStorageの容量上限はオリジン単位のため、同じサイト上の他のアプリ（Ledger・Activator等）や、
+  // テンプレート・メモ帳・設定などのキーも同じ上限を分け合っている。
+  // 以前は作品データのキー1本しか数えておらず、残り容量を実際より多く見せていた。
+  function getOriginStorageBytes(){
+    try {
+      let total = 0;
+      for(let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k === null) continue;
+        total += byteLengthOfString(k) + byteLengthOfString(localStorage.getItem(k) || '');
+      }
+      return total;
+    } catch(_e){
+      // 列挙できない環境では従来どおり作品データのみの値にフォールバック（表示が消えるよりは安全側）
+      return getTotalStorageBytes();
+    }
+  }
+
   function updateStorageUsageDisplay(){
-    const used = getTotalStorageBytes();
+    const used = getOriginStorageBytes();
     const pct = Math.min(100, Math.round((used / STORAGE_ESTIMATED_LIMIT_BYTES) * 100));
     const isWarn = pct >= 80;
 
@@ -5193,6 +5221,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
       el.textContent = `${formatBytes(used)} / ${formatBytes(STORAGE_ESTIMATED_LIMIT_BYTES)}（目安）`;
       el.classList.toggle('warn', isWarn);
     });
+    // 内訳：作品・ネタ帳（projects配列のキー）と、それ以外（テンプレート・メモ帳・設定・同じサイトの他アプリ）
+    const breakdownEl = document.getElementById('storageBreakdownText');
+    if(breakdownEl){
+      const projectsBytes = getTotalStorageBytes();
+      const othersBytes = Math.max(0, used - projectsBytes);
+      breakdownEl.textContent = `内訳：作品・ネタ帳 ${formatBytes(projectsBytes)} ／ その他 ${formatBytes(othersBytes)}（テンプレート・メモ帳・設定、同じサイト上の他のアプリ）`;
+    }
   }
 
   function renderStorageDetailList(){
@@ -5249,6 +5284,13 @@ h1 .mark { color:var(--accent); font-style:italic; }
       const p = payload && payload.project ? payload.project : payload;
       if(!p || typeof p !== 'object' || !('title' in p)){
         alert('作品データとして認識できませんでした。');
+        return;
+      }
+      // 2026-09-24追加：ネタ帳のファイルを作品として取り込むと、ネタ帳に作品用の項目（sections等）が
+      // 足された状態で混入し、しかもリールには表示されないため「失敗した」ように見えていた。
+      // ネタ帳側の読み込み（importIdeabookFromFile）は逆方向のチェックを既に持っているので、これで両方向そろう。
+      if(projectKind(p) === 'ideabook'){
+        alert('これはネタ帳のファイルなので、作品としては読み込めません。\nネタ帳一覧の☰「📥 ネタ帳をインポート」から読み込んでください。');
         return;
       }
       // IDの衝突を避けるため新規IDを振り直す
@@ -6693,8 +6735,32 @@ h1 .mark { color:var(--accent); font-style:italic; }
   function loadMemoPadText(){
     try { return localStorage.getItem(MEMO_PAD_STORAGE_KEY) || ''; } catch(_e){ return ''; }
   }
+  // 2026-09-24修正：保存失敗を無言で握りつぶしていたのを、通知するように変更。
+  // 作品データのsave()は失敗時にアラートを出すのに、メモ帳だけ無言だったため、
+  // 容量不足などで保存できないまま入力を続けると、再読み込みで内容が消える危険があった。
+  // 歯止め：デバウンス（600ms）のたびにアラートが連発しないよう、失敗が続いている間は
+  // 最初の1回だけアラートを出し、以降はラベル横の警告表示で知らせ続ける。保存に成功したら両方リセット。
+  let memoPadSaveFailing = false;
+  function setMemoPadSaveWarning(visible){
+    const el = document.getElementById('memoPadSaveWarning');
+    if(el) el.style.display = visible ? 'inline' : 'none';
+  }
   function saveMemoPadText(text){
-    try { localStorage.setItem(MEMO_PAD_STORAGE_KEY, text); } catch(_e){ /* ignore */ }
+    try {
+      localStorage.setItem(MEMO_PAD_STORAGE_KEY, text);
+    } catch(_e){
+      setMemoPadSaveWarning(true);
+      if(!memoPadSaveFailing){
+        memoPadSaveFailing = true;
+        alert('メモ帳を保存できませんでした。ブラウザの保存容量が不足している可能性があります。\n入力した内容は画面に残っています。消える前にコピーして、別の場所へ退避してください。');
+      }
+      return false;
+    }
+    if(memoPadSaveFailing){
+      memoPadSaveFailing = false;
+      setMemoPadSaveWarning(false);
+    }
+    return true;
   }
 
   // ---- ネタ帳一覧カード表示用の日付フォーマット（簡易、MM/DD更新） ----
@@ -6740,7 +6806,11 @@ h1 .mark { color:var(--accent); font-style:italic; }
   }
 
   function openIdeaBookList(){
-    document.getElementById('memoPadTextarea').value = loadMemoPadText();
+    // 2026-09-24修正：保存に失敗している最中は、画面上の未保存の入力を
+    // 古い保存内容で上書きしない（上書きすると、退避前の入力がその場で消えてしまう）
+    if(!memoPadSaveFailing){
+      document.getElementById('memoPadTextarea').value = loadMemoPadText();
+    }
     document.getElementById('memoPadTextarea').rows = loadMemoPadRows();
     document.getElementById('memoPadRowsInput').value = loadMemoPadRows();
     renderIdeabookListCards();
