@@ -6841,8 +6841,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
     renderGrid();
 
     resetIdeaSeedSelection();
-    closeIdeabookEditor();
-    openDetail(p.id);
+    closeIdeabookEditor(); // 内側：個別ネタ帳エディタを閉じる
+    closeIdeaBookList();   // 外側：本棚一覧モーダルも閉じる（2026-09-24修正：これが無いと詳細画面の手前に本棚一覧が残り、見た目上遷移していないように見える）
+    // 2026-09-24修正：ネタ帳系モーダルのclose(2件)は汎用モーダル履歴トラッキング（MutationObserver、
+    // queueMicrotaskでバッチ判定）の監視対象。openDetail()を同期的に続けて呼ぶと、
+    // 「新規オープンなし・close 2件」と誤判定されてhistory.back()が発火し、
+    // 積んだはずのdetail履歴を巻き戻してしまう（＝詳細が一瞬で消える不具合の原因）。
+    // Observerのバッチ判定（queueMicrotask）が完了してからopenDetailするよう、
+    // setTimeoutで1ティック遅らせて安全に順序を確定させる。
+    setTimeout(() => openDetail(p.id), 0);
   }
 
   function updateIdeabookCoverPreview(book){
