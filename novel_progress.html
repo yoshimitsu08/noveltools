@@ -6835,21 +6835,33 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const p = newProjectSkeleton();
     p.title = trimmed;
-    p.memo = seeds.map(s => s.text).join('\n\n'); // 2026-09-24修正：実際に使われるのはroughMemoではなくmemo（詳細画面「メモ」欄）。プロット作成前はここがラフメモ扱いになる運用
+    p.memo = seeds.map(s => s.text).join('\n\n'); // 実際に使われるのはroughMemoではなくmemo（詳細画面「メモ」欄）。プロット作成前はここがラフメモ扱いになる運用
     projects.push(p);
     save();
     renderGrid();
 
     resetIdeaSeedSelection();
-    closeIdeabookEditor(); // 内側：個別ネタ帳エディタを閉じる
-    closeIdeaBookList();   // 外側：本棚一覧モーダルも閉じる（2026-09-24修正：これが無いと詳細画面の手前に本棚一覧が残り、見た目上遷移していないように見える）
-    // 2026-09-24修正：ネタ帳系モーダルのclose(2件)は汎用モーダル履歴トラッキング（MutationObserver、
-    // queueMicrotaskでバッチ判定）の監視対象。openDetail()を同期的に続けて呼ぶと、
-    // 「新規オープンなし・close 2件」と誤判定されてhistory.back()が発火し、
-    // 積んだはずのdetail履歴を巻き戻してしまう（＝詳細が一瞬で消える不具合の原因）。
-    // Observerのバッチ判定（queueMicrotask）が完了してからopenDetailするよう、
-    // setTimeoutで1ティック遅らせて安全に順序を確定させる。
-    setTimeout(() => openDetail(p.id), 0);
+    stopIdeaSeedRotation();
+    // 2026-09-24修正：
+    // (1) detailModalOverlayはモーダル履歴トラッキング（MutationObserver）の監視対象外で、
+    //     openDetailは自前でpushAppNavState('detail')する設計だが、その条件が
+    //     「appNavStateが'reel'のときだけ」に限定されている（7148行目付近）。
+    //     ネタ帳一覧→エディタを経由した今の状態はappNavStateが'modal:xxx'になっており
+    //     'reel'ではないため、素のopenDetail(p.id)では履歴が一切積まれない
+    //     （＝Androidバックで詳細を素通りしてリールまで戻ってしまう、別の不具合を生む）。
+    // (2) 一方、ネタ帳エディタ＋本棚一覧のclassList.removeを先に行うと、Observerが
+    //     「open 0件・close 2件」の純粋closeと誤検知してhistory.back()を発火させ、
+    //     その後のopenDetailで積んだdetail履歴を巻き戻してしまう（実際に発生・確認済み）。
+    // 対策：pushAppNavState('detail')を自分で明示的に呼んで履歴を確定させたうえで、
+    // openDetailにはskipHistoryPush=trueを渡して内部の間接判定（'reel'限定）を経由させない。
+    // このあとネタ帳側のモーダルを閉じても、appNavStateは既に'detail'であり
+    // 'modal:xxx'から動いているため、Observer側のclose検知とhistory.back()判定
+    // （wasTop==='modal:xxx'との比較）が噛み合わず、誤発火しない。
+    pushAppNavState('detail');
+    openDetail(p.id, null, /*skipHistoryPush=*/true);
+    document.getElementById('ideabookEditorModalOverlay').classList.remove('active');
+    document.getElementById('ideabookEditorDropdown').classList.remove('active');
+    document.getElementById('ideaBookListModalOverlay').classList.remove('active');
   }
 
   function updateIdeabookCoverPreview(book){
