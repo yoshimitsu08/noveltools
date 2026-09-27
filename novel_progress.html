@@ -3899,6 +3899,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     <button class="btn" id="manuscriptToolsBtn" style="flex-shrink:0; padding:8px 12px; font-size:0.65rem;">🛠 編集ツール</button>
   </div>
 
+  <div class="editor-body" id="manuscriptOrphanNotice" style="display:none; padding-bottom:0;"></div>
   <div class="editor-body" id="manuscriptChapterNav">
     <!-- chapter tab list -->
   </div>
@@ -9091,6 +9092,9 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
       p.plotChapters = p.plotChapters.filter(c => c.id !== ch.id);
       if(p.manuscript && p.manuscript[ch.id]) delete p.manuscript[ch.id];
+      // 2026-09-27修正：章ごとの画像プロンプトの残骸も消し、合計文字数を削除後の状態に更新する
+      if(p.imagePrompts && p.imagePrompts.chapters) delete p.imagePrompts.chapters[ch.id];
+      recomputeTotalWordcount(p);
       p.updatedAt = Date.now();
       save();
       renderChapters(p);
@@ -9444,6 +9448,7 @@ h1 .mark { color:var(--accent); font-style:italic; }
     currentChapterId = (p.plotChapters[0] && p.plotChapters[0].id) || null;
     renderChapterTabs(p);
     renderManuscriptEditArea(p);
+    renderOrphanManuscriptNotice(p);
 
     switchView('manuscriptView');
   }
@@ -9659,8 +9664,12 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
   function recomputeTotalWordcount(p){
     // 全章の合成テキスト文字数を合算して合計文字数として反映
+    // 2026-09-27修正：以前は p.manuscript の全エントリを数えていたため、章から外れた本文（削除済みの章の
+    // 残骸など）まで合計に入り、画面上の本文と文字数が食い違っていた。プロットに存在する章だけを数える。
     let total = 0;
-    Object.values(p.manuscript || {}).forEach(entry => {
+    (p.plotChapters || []).forEach(ch => {
+      const entry = p.manuscript && p.manuscript[ch.id];
+      if(!entry) return;
       const selector = ensureSelector(entry);
       total += composeSelectorText(selector).length;
     });
@@ -9670,6 +9679,51 @@ h1 .mark { color:var(--accent); font-style:italic; }
     const existing = p.wordLog.find(l => l.date === today);
     if(existing) existing.value = total;
     else p.wordLog.push({date: today, value: total});
+  }
+
+  // 2026-09-27新設：章に本文（いずれかのドラフトのカード）が1文字でもあるか
+  function chapterHasManuscriptText(p, chapterId){
+    const entry = p.manuscript && p.manuscript[chapterId];
+    if(!entry) return false;
+    const selector = ensureSelector(entry);
+    return selector.series.some(s => (selector.seriesCards[s.id] || []).some(c => (c.text || '').trim()));
+  }
+
+  // 2026-09-27新設：どの章にも紐づいていない本文（章から外れた本文）の章ID一覧。
+  // AIで設定・プロットを上書きした際に章IDが振り直されていた不具合（修正済み）の影響を受けたデータを救済するため。
+  function findOrphanManuscriptIds(p){
+    const chapterIds = new Set((p.plotChapters || []).map(ch => ch.id));
+    return Object.keys(p.manuscript || {}).filter(id => !chapterIds.has(id) && chapterHasManuscriptText(p, id));
+  }
+
+  function renderOrphanManuscriptNotice(p){
+    const box = document.getElementById('manuscriptOrphanNotice');
+    if(!box) return;
+    const orphanIds = findOrphanManuscriptIds(p);
+    if(orphanIds.length === 0){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    box.innerHTML = `
+      <div class="parse-warning-box">
+        ⚠ どの章にも表示されていない本文が${orphanIds.length}件あります（AIで設定・プロットを上書きした際の不具合で、章とのつながりが外れたものです。本文データ自体は残っています）。<br>
+        <button type="button" class="btn primary" id="restoreOrphanManuscriptBtn" style="margin-top:8px;">末尾に章として復元する</button>
+      </div>`;
+    document.getElementById('restoreOrphanManuscriptBtn').onclick = () => {
+      const freshP = projects.find(x => x.id === p.id) || p;
+      const ids = findOrphanManuscriptIds(freshP);
+      if(ids.length === 0) return;
+      if(!confirm(`章から外れた本文${ids.length}件を、「（復元した本文）」という章として末尾に追加します。よろしいですか？`)) return;
+      ids.forEach(id => {
+        // 章IDを元のキーと同じにすることで、残っていた本文データにそのまま再接続する
+        freshP.plotChapters.push({ id, title:'（復元した本文）', event:'', feeling:'', reveal:'', other:'', targetLength: null });
+      });
+      recomputeTotalWordcount(freshP);
+      freshP.updatedAt = Date.now();
+      save();
+      renderChapterTabs(freshP);
+      renderManuscriptEditArea(freshP);
+      renderOrphanManuscriptNotice(freshP);
+      alert(`${ids.length}件の本文を章として復元しました。章タイトルはタブの長押しで変更できます。`);
+    };
   }
 
   // ================= Sentence Selector =================
@@ -11020,7 +11074,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
 
     const note = document.getElementById('hubApplyNote');
     if(hubPurpose === 'buildSettingPlot'){
-      note.textContent = '反映すると、以後この作品ではAI一括取り込みは使えなくなります（通常の編集画面で手動修正してください）';
+      // 2026-09-27修正：実際には取り込みの制限は行われていないため、誤解を招く文言を実際の挙動に合わせた
+      note.textContent = '反映すると既存の設定・プロットは全て上書きされます（書き済みの本文は、章の順番どおりに引き継がれます）';
     } else if(hubPurpose === 'writeManuscript'){
       note.textContent = '反映すると、各章に新しいドラフト系列として本文が追加されます（既存のカードは変更されません）';
     } else if(hubPurpose === 'imagePrompts'){
@@ -11103,11 +11158,15 @@ h1 .mark { color:var(--accent); font-style:italic; }
       keys.forEach(label => {
         const re = new RegExp(`(^|\\n)\\s*${label}[：:]`, '');
         const m = joined.match(re);
-        if(m) positions.push({label, index: m.index + m[0].indexOf(label)});
+        // valueStart：ラベル直後のコロン（全角・半角どちらでも）の次の位置
+        if(m) positions.push({label, index: m.index + m[0].indexOf(label), valueStart: m.index + m[0].length});
       });
       positions.sort((a,b) => a.index - b.index);
       positions.forEach((pos, i) => {
-        const start = joined.indexOf(':', pos.index) >= 0 ? joined.indexOf(':', pos.index)+1 : joined.indexOf('：', pos.index)+1;
+        // 2026-09-27修正：以前は「ラベル以降で最初に見つかった半角コロン」を値の開始位置にしていたため、
+        // 本文中に半角コロン（時刻「3:15」、英文など）があると、それより前の項目がすべて空になり、
+        // 該当項目も途中から切れていた。ラベル直後のコロンの位置（正規表現の一致範囲の末尾）を使う。
+        const start = pos.valueStart;
         const end = i+1 < positions.length ? positions[i+1].index : joined.length;
         const val = joined.slice(start, end).trim();
         result[labelMap[pos.label]] = val;
@@ -11236,9 +11295,20 @@ h1 .mark { color:var(--accent); font-style:italic; }
     }));
 
     p.sections = newSections;
-    p.plotChapters = result.chapters.map(c => ({
-      id: uid(), title: c.title, event: c.event, feeling: c.feeling, reveal: c.reveal, other: c.other
+    // 2026-09-27修正：以前は全章に新しいIDを振り直していたため、既に書いた本文（p.manuscript）や
+    // 画像プロンプト（p.imagePrompts.chapters）が章IDで紐づかなくなり、本文が「消えたように」見えていた。
+    // 章は先頭から順番に、既存の章IDと目安文字数を引き継ぐ。
+    const oldChapters = p.plotChapters || [];
+    p.plotChapters = result.chapters.map((c, i) => ({
+      id: oldChapters[i] ? oldChapters[i].id : uid(),
+      title: c.title, event: c.event, feeling: c.feeling, reveal: c.reveal, other: c.other,
+      targetLength: (oldChapters[i] && oldChapters[i].targetLength !== undefined) ? oldChapters[i].targetLength : null
     }));
+    // 新しい章数より後ろにあった章のうち、本文が書かれているものは消さずに末尾へ残す
+    oldChapters.slice(result.chapters.length).forEach(ch => {
+      if(chapterHasManuscriptText(p, ch.id)) p.plotChapters.push(ch);
+    });
+    recomputeTotalWordcount(p);
 
     if(result.unclassified.length > 0){
       p.memo = (p.memo ? p.memo + '\n\n' : '') + '【AI取り込み時の未分類テキスト】\n' + result.unclassified.join('\n\n');
@@ -11478,6 +11548,8 @@ h1 .mark { color:var(--accent); font-style:italic; }
       }));
       appliedCount++;
     });
+    // 2026-09-27修正：追加直後に合計文字数・進捗表示が更新されず、次に何か編集するまで古いままだった
+    recomputeTotalWordcount(p);
     p.updatedAt = Date.now();
     save();
     return appliedCount;
